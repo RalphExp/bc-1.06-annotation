@@ -1,8 +1,6 @@
 /* compute the crossover for recursive and simple multiplication */
 
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <time.h>
 #include "number.h"
 #ifndef VARARGS
@@ -18,7 +16,7 @@ extern bc_num _one_;
 
 /* global variables */
 int test_n = 1000;
-long test_time = 30 * CLOCKS_PER_SEC;  /* 30 seconds */ 
+int test_time = 30 * CLOCKS_PER_SEC;  /* 30 seconds */ 
 
 /* Other things for number.c. */
 int std_only;
@@ -151,7 +149,7 @@ int main (int argc, char **argv)
 
   if (debug)
     fprintf (stderr, "Timings are for %d multiplies\n"
-	             "Minimum time is %lu seconds\n", test_n,
+	             "Minimum time is %d seconds\n", test_n,
 	     test_time/CLOCKS_PER_SEC);
 
   /* Two of the same size */

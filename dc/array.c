@@ -1,12 +1,11 @@
-/*
+/* 
  * implement arrays for dc
  *
- * Copyright (C) 1994, 1997, 1998, 2000, 2006, 2008
- * Free Software Foundation, Inc.
+ * Copyright (C) 1994, 1997, 1998 Free Software Foundation, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3, or (at your option)
+ * the Free Software Foundation; either version 2, or (at your option)
  * any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -15,8 +14,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program; if not, you can either send email to this
+ * program's author (see below) or write to:
  *
+ *    The Free Software Foundation, Inc.
+ *    59 Temple Place, Suite 330
+ *    Boston, MA 02111 USA
  */
 
 /* This module is the only one that knows what arrays look like. */
@@ -55,14 +58,15 @@ dc_array_set DC_DECLARG((array_id, Index, value))
 	dc_data value DC_DECLEND
 {
 	struct dc_array *cur;
-	struct dc_array *prev = NULL;
+	struct dc_array *prev=NULL;
+	struct dc_array *newentry;
 
 	cur = dc_get_stacked_array(array_id);
-	while (cur != NULL  &&  cur->Index < Index){
+	while (cur && cur->Index < Index){
 		prev = cur;
 		cur = cur->next;
 	}
-	if (cur != NULL  &&  cur->Index == Index){
+	if (cur && cur->Index == Index){
 		if (cur->value.dc_type == DC_NUMBER)
 			dc_free_num(&cur->value.v.number);
 		else if (cur->value.dc_type == DC_STRING)
@@ -71,11 +75,11 @@ dc_array_set DC_DECLARG((array_id, Index, value))
 			dc_garbage(" in array", array_id);
 		cur->value = value;
 	}else{
-		struct dc_array *newentry = dc_malloc(sizeof *newentry);
+		newentry = dc_malloc(sizeof *newentry);
 		newentry->Index = Index;
 		newentry->value = value;
 		newentry->next = cur;
-		if (prev != NULL)
+		if (prev)
 			prev->next = newentry;
 		else
 			dc_set_stacked_array(array_id, newentry);
@@ -89,12 +93,11 @@ dc_array_get DC_DECLARG((array_id, Index))
 	int array_id DC_DECLSEP
 	int Index DC_DECLEND
 {
-	struct dc_array *cur = dc_get_stacked_array(array_id);
+	struct dc_array *cur;
 
-	while (cur != NULL  &&  cur->Index < Index)
-		cur = cur->next;
-	if (cur !=NULL  &&  cur->Index == Index)
-		return dc_dup(cur->value);
+	for (cur=dc_get_stacked_array(array_id); cur; cur=cur->next)
+		if (cur->Index == Index)
+			return dc_dup(cur->value);
 	return dc_int2data(0);
 }
 
@@ -106,7 +109,7 @@ dc_array_free DC_DECLARG((a_head))
 	struct dc_array *cur;
 	struct dc_array *next;
 
-	for (cur=a_head; cur!=NULL; cur=next) {
+	for (cur=a_head; cur; cur=next) {
 		next = cur->next;
 		if (cur->value.dc_type == DC_NUMBER)
 			dc_free_num(&cur->value.v.number);
@@ -117,12 +120,3 @@ dc_array_free DC_DECLARG((a_head))
 		free(cur);
 	}
 }
-
-
-/*
- * Local Variables:
- * mode: C
- * tab-width: 4
- * End:
- * vi: set ts=4 :
- */

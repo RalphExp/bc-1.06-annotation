@@ -1,10 +1,12 @@
-/*  This file is part of GNU bc.
+%{
+/* scan.l: the (f)lex description file for the scanner. */
 
-    Copyright (C) 1991-1994, 1997, 2006, 2008, 2012-2017 Free Software Foundation, Inc.
+/*  This file is part of GNU bc.
+    Copyright (C) 1991, 1992, 1993, 1994, 1997 Free Software Foundation, Inc.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 3 of the License , or
+    the Free Software Foundation; either version 2 of the License , or
     (at your option) any later version.
 
     This program is distributed in the hope that it will be useful,
@@ -13,8 +15,10 @@
     GNU General Public License for more details.
 
     You should have received a copy of the GNU General Public License
-    along with this program; see the file COPYING.  If not, see
-    <http://www.gnu.org/licenses>.
+    along with this program; see the file COPYING.  If not, write to
+      The Free Software Foundation, Inc.
+      59 Temple Place, Suite 330
+      Boston, MA 02111 USA
 
     You may contact the author by:
        e-mail:  philnelson@acm.org
@@ -24,10 +28,6 @@
                 Bellingham, WA 98226-9062
        
 *************************************************************************/
-
-/* scan.l: the (f)lex description file for the scanner. */
-
-%{
 
 #include "bcdefs.h"
 #include "bc.h"
@@ -48,7 +48,7 @@
 
 /* We want to define our own yywrap. */
 #undef yywrap
-int yywrap (void);
+_PROTOTYPE(int yywrap, (void));
 
 #if defined(LIBEDIT)
 /* Support for the BSD libedit with history for
@@ -59,11 +59,20 @@ int yywrap (void);
 /* Have input call the following function. */
 #undef  YY_INPUT
 #define YY_INPUT(buf,result,max_size) \
-		bcel_input((char *)buf, (yy_size_t *)&result, max_size)
+		bcel_input((char *)buf, &result, max_size)
 
 /* Variables to help interface editline with bc. */
 static const char *bcel_line = (char *)NULL;
 static int   bcel_len = 0;
+
+
+/* Required to get rid of that ugly ? default prompt! */
+char *
+null_prompt (EditLine *el)
+{
+  return "";
+}
+
 
 /* bcel_input puts upto MAX characters into BUF with the number put in
    BUF placed in *RESULT.  If the yy input file is the same as
@@ -71,18 +80,19 @@ static int   bcel_len = 0;
 */
 
 static void
-bcel_input (char *buf, yy_size_t  *result, int max)
+bcel_input (buf, result, max)
+	char *buf;
+	int  *result;
+	int   max;
 {
-  ssize_t rdsize;
   if (!edit || yyin != stdin)
     {
-      while ( (rdsize = read( fileno(yyin), buf, max )) < 0 )
+      while ( (*result = read( fileno(yyin), buf, max )) < 0 )
         if (errno != EINTR)
 	  {
 	    yyerror( "read() in flex scanner failed" );
-	    bc_exit (1);
+	    exit (1);
 	  }
-      *result = (yy_size_t) rdsize;
       return;
     }
 
@@ -99,7 +109,6 @@ bcel_input (char *buf, yy_size_t  *result, int max)
       if (bcel_len != 0)
 	history (hist, &histev, H_ENTER, bcel_line); 
       fflush (stdout);
-      checkferror_output(stdout);
     }
 
   if (bcel_len <= max)
@@ -134,6 +143,7 @@ static int   rl_len = 0;
 
 /* Definitions for readline access. */
 extern FILE *rl_instream;
+_PROTOTYPE(char *readline, (char *));
 
 /* rl_input puts upto MAX characters into BUF with the number put in
    BUF placed in *RESULT.  If the yy input file is the same as
@@ -141,7 +151,10 @@ extern FILE *rl_instream;
 */
 
 static void
-rl_input (char *buf, int *result, int max)
+rl_input (buf, result, max)
+	char *buf;
+	int  *result;
+	int   max;
 {
   if (yyin != rl_instream)
     {
@@ -149,7 +162,7 @@ rl_input (char *buf, int *result, int max)
         if (errno != EINTR)
 	  {
 	    yyerror( "read() in flex scanner failed" );
-	    bc_exit (1);
+	    exit (1);
 	  }
       return;
     }
@@ -172,7 +185,6 @@ rl_input (char *buf, int *result, int max)
 	add_history (rl_line); 
       rl_line[rl_len-1] = '\n';
       fflush (stdout);
-      checkferror_output(stdout);
     }
 
   if (rl_len <= max)
@@ -204,7 +216,7 @@ rl_input (char *buf, int *result, int max)
 #endif
 
 %}
-DIGIT [0-9A-Z]
+DIGIT [0-9A-F]
 LETTER [a-z]
 %s slcomment
 %%
@@ -231,10 +243,8 @@ obase  return(Obase);
 auto   return(Auto);
 else   return(Else);
 read   return(Read);
-random return(Random);
 halt   return(Halt);
 last   return(Last);
-void   return(Void); 
 history {
 #if defined(READLINE) || defined(LIBEDIT)
 	  return(HistoryVar);
@@ -259,14 +269,14 @@ limits return(Limits);
 && { return(AND); }
 \|\| { return(OR); }
 "!" { return(NOT); }
-"*"|"/"|"%"|"&" { yylval.c_value = yytext[0]; return((int)yytext[0]); }
+"*"|"/"|"%" { yylval.c_value = yytext[0]; return((int)yytext[0]); }
 "="|\+=|-=|\*=|\/=|%=|\^=  { yylval.c_value = yytext[0]; return(ASSIGN_OP); }
 =\+|=-|=\*|=\/|=%|=\^  { 
 #ifdef OLD_EQ_OP
 			 char warn_save;
 			 warn_save = warn_not_std;
 			 warn_not_std = TRUE;
-			 ct_warn ("Old fashioned =<op>");
+			 warn ("Old fashioned =<op>");
 			 warn_not_std = warn_save;
 			 yylval.c_value = yytext[1];
 #else
@@ -297,14 +307,13 @@ limits return(Limits);
 	    if (c == EOF)
 	      {
 		fprintf (stderr,"EOF encountered in a comment.\n");
-                checkferror_output(stderr);
 		break;
 	      }
 	  }
       }
 [a-z][a-z0-9_]* { yylval.s_value = strcopyof(yytext); return(NAME); }
 \"[^\"]*\"  {
- 	      const char *look;
+ 	      unsigned char *look;
 	      int count = 0;
 	      yylval.s_value = strcopyof(yytext);
 	      for (look = yytext; *look != 0; look++)
@@ -316,7 +325,7 @@ limits return(Limits);
 	      return(STRING);
 	    }
 {DIGIT}({DIGIT}|\\\n)*("."({DIGIT}|\\\n)*)?|"."(\\\n)*{DIGIT}({DIGIT}|\\\n)* {
-	      char *src, *dst;
+	      unsigned char *src, *dst;
 	      int len;
 	      /* remove a trailing decimal point. */
 	      len = strlen(yytext);
@@ -335,11 +344,6 @@ limits return(Limits);
 		      src++; src++;
 		      line_no++;
 		    }
-		  if (*src == ',')
-		    {
-		      src++;
-		      ct_warn("Commas in numbers");
-		    }		    
 		  else
 		    *dst++ = *src++;
 	        }
@@ -363,9 +367,8 @@ limits return(Limits);
 /* This is the way to get multiple files input into lex. */
 
 int
-yywrap(void)
+yywrap()
 {
   if (!open_new_file ()) return (1);	/* EOF on standard in. */
-  return (0);          			/* We have more input. */
-  yyunput(0,NULL);	/* Make sure the compiler think yyunput is used. */
+  return (0);				/* We have more input. */
 }

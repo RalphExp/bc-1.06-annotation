@@ -1,3 +1,0 @@
-version=3
-    opts=pasv \
-    https://ftp.gnu.org/pub/gnu/bc/bc-([0-9a-z.]+).tar.gz

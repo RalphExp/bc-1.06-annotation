@@ -1,12 +1,11 @@
 /* 
  * implement string functions for dc
  *
- * Copyright (C) 1994, 1997, 1998, 2006, 2008, 2013
- * Free Software Foundation, Inc.
+ * Copyright (C) 1994, 1997, 1998 Free Software Foundation, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3, or (at your option)
+ * the Free Software Foundation; either version 2, or (at your option)
  * any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -15,8 +14,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program; if not, you can either send email to this
+ * program's author (see below) or write to:
  *
+ *    The Free Software Foundation, Inc.
+ *    59 Temple Place, Suite 330
+ *    Boston, MA 02111 USA
  */
 
 /* This should be the only module that knows the internals of type dc_string */
@@ -86,15 +89,18 @@ dc_free_str DC_DECLARG((value))
 }
 
 /* Output a dc_str value.
+ * Add a trailing newline if "newline" is set.
  * Free the value after use if discard_flag is set.
  */
 void
-dc_out_str DC_DECLARG((value, discard_flag))
+dc_out_str DC_DECLARG((value, newline, discard_flag))
 	dc_str value DC_DECLSEP
+	dc_newline newline DC_DECLSEP
 	dc_discard discard_flag DC_DECLEND
 {
 	fwrite(value->s_ptr, value->s_len, sizeof *value->s_ptr, stdout);
-        checkferror_output(stdout);
+	if (newline == DC_WITHNL)
+		putchar('\n');
 	if (discard_flag == DC_TOSS)
 		dc_free_str(&value);
 }
@@ -141,9 +147,9 @@ dc_readstring DC_DECLARG((fp, ldelim, rdelim))
 	char *p;
 	const char *end;
 
-	if (line_buf == NULL){
+	if (!line_buf){
 		/* initial buflen should be large enough to handle most cases */
-		buflen = (size_t) 2016;
+		buflen = 2016;
 		line_buf = dc_malloc(buflen);
 	}
 	p = line_buf;
@@ -163,14 +169,13 @@ dc_readstring DC_DECLARG((fp, ldelim, rdelim))
 			 */
 			buflen += 2048;
 			line_buf = realloc(line_buf, buflen);
-			if (line_buf == NULL)
+			if (!line_buf)
 				dc_memfail();
 			p = line_buf + offset;
 			end = line_buf + buflen;
 		}
 		*p++ = c;
 	}
-	checkferror_input(fp);
 	return dc_makestring(line_buf, (size_t)(p-line_buf));
 }
 
@@ -204,12 +209,3 @@ dc_string_init DC_DECLVOID()
 {
 	/* nothing to do for this implementation */
 }
-
-
-/*
- * Local Variables:
- * mode: C
- * tab-width: 4
- * End:
- * vi: set ts=4 :
- */

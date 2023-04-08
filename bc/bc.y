@@ -1,10 +1,13 @@
-/*  This file is part of GNU bc.
+%{
+/* bc.y: The grammar for a POSIX compatable bc processor with some
+         extensions to the language. */
 
-    Copyright (C) 1991-1994, 1997, 2006, 2008, 2012-2017 Free Software Foundation, Inc.
+/*  This file is part of GNU bc.
+    Copyright (C) 1991, 1992, 1993, 1994, 1997 Free Software Foundation, Inc.
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 3 of the License , or
+    the Free Software Foundation; either version 2 of the License , or
     (at your option) any later version.
 
     This program is distributed in the hope that it will be useful,
@@ -13,8 +16,10 @@
     GNU General Public License for more details.
 
     You should have received a copy of the GNU General Public License
-    along with this program; see the file COPYING.  If not, see
-    <http://www.gnu.org/licenses>.
+    along with this program; see the file COPYING.  If not, write to:
+      The Free Software Foundation, Inc.
+      59 Temple Place, Suite 330
+      Boston, MA 02111 USA
 
     You may contact the author by:
        e-mail:  philnelson@acm.org
@@ -25,26 +30,9 @@
        
 *************************************************************************/
 
-/* bc.y: The grammar for a POSIX compatable bc processor with some
-         extensions to the language. */
-
-%{
-
 #include "bcdefs.h"
 #include "global.h"
 #include "proto.h"
-
-/* current function number. */
-int cur_func = -1;
-
-/* Expression encoded information -- See comment at expression rules. */
-#define EX_ASSGN 0 
-#define EX_REG   1
-#define EX_COMP  2
-#define EX_PAREN 4
-#define EX_VOID  8 
-#define EX_EMPTY 16
-
 %}
 
 %start program
@@ -52,9 +40,9 @@ int cur_func = -1;
 %union {
 	char	 *s_value;
 	char	  c_value;
-	int	  i_value;
+	int	  	  i_value;
 	arg_list *a_value;
-       }
+}
 
 /* Extensions over POSIX bc.
    a) NAME was LETTER.  This grammar allows longer names.
@@ -72,8 +60,7 @@ int cur_func = -1;
    h) optional expressions in the for loop.
    i) print statement to print multiple numbers per line.
    j) warranty statement to print an extended warranty notice.
-   k) limits statement to print the processor's limits.
-   l) void functions.
+   j) limits statement to print the processor's limits.
 */
 
 %token <i_value> ENDOFLINE AND OR NOT
@@ -89,13 +76,12 @@ int cur_func = -1;
 %token <i_value> Define    Break    Quit    Length
 /*     'return', 'for', 'if', 'while', 'sqrt', 'else' 	*/
 %token <i_value> Return    For    If    While    Sqrt   Else
-/*     'scale', 'ibase', 'obase', 'auto', 'read', 'random' 	*/
-%token <i_value> Scale Ibase Obase Auto    Read    Random
+/*     'scale', 'ibase', 'obase', 'auto', 'read' 	*/
+%token <i_value> Scale    Ibase    Obase    Auto  Read
 /*     'warranty', 'halt', 'last', 'continue', 'print', 'limits'   */
-%token <i_value> Warranty  Halt  Last  Continue  Print  Limits
-/*     'history', 'void' */
-%token <i_value> UNARY_MINUS HistoryVar Void
-
+%token <i_value> Warranty, Halt, Last, Continue, Print, Limits
+/*     'history' */
+%token <i_value> UNARY_MINUS HistoryVar
 
 /* Types of all other things. */
 %type <i_value> expression return_expression named_expression opt_expression
@@ -104,7 +90,6 @@ int cur_func = -1;
 %type <a_value> opt_argument_list argument_list
 %type <i_value> program input_item semicolon_list statement_list
 %type <i_value> statement function statement_or_error required_eol
-%type <i_value> opt_void
 
 /* precedence */
 %left OR
@@ -122,11 +107,10 @@ int cur_func = -1;
 program			: /* empty */
 			    {
 			      $$ = 0;
-			      if (interactive && !quiet)
-				{
-				  show_bc_version ();
-				  welcome ();
-				}
+			      if (interactive && !quiet) {
+				  	show_bc_version ();
+				  	welcome ();
+				  }
 			    }
 			| program input_item
 			;
@@ -142,7 +126,7 @@ input_item		: semicolon_list ENDOFLINE
 			;
 opt_newline		: /* empty */
 			| ENDOFLINE
-			    { ct_warn ("newline not allowed"); }
+			    { warn ("newline not allowed"); }
 			;
 semicolon_list		: /* empty */
 			    { $$ = 0; }
@@ -168,145 +152,142 @@ statement 		: Warranty
 			    { limits (); }
 			| expression
 			    {
-			      if ($1 & EX_COMP)
-				ct_warn ("comparison in expression");
-			      if ($1 & EX_REG)
-				generate ("W");
+			      if ($1 & 2)
+					warn ("comparison in expression");
+			      if ($1 & 1)
+					generate ("W"); /* Write the value on the top of the stack. 
+									   Then pop the stack. */
 			      else 
-				generate ("p");
+					generate ("p"); /* Pop the execution stack. */
 			    }
 			| STRING
 			    {
 			      $$ = 0;
-			      generate ("w");
-			      generate ($1);
+			      generate ("w");  /* Write a string to the output. TODO: write a newline */
+			      generate ($1); /* ??? */
 			      free ($1);
 			    }
 			| Break
 			    {
 			      if (break_label == 0)
-				yyerror ("Break outside a for/while");
-			      else
-				{
-				  snprintf (genstr, genlen, "J%1d:",
-				  	    break_label);
-				  generate (genstr);
-				}
+					yyerror ("Break outside a for/while");
+			      else {
+				  	sprintf (genstr, "J%1d:", break_label); /* unconditional jump */
+				  	generate (genstr);
+				  }
 			    }
 			| Continue
 			    {
-			      ct_warn ("Continue statement");
+			      warn ("Continue statement");
 			      if (continue_label == 0)
-				yyerror ("Continue outside a for");
-			      else
-				{
-				  snprintf (genstr, genlen, "J%1d:", 
-					    continue_label);
-				  generate (genstr);
-				}
+					yyerror ("Continue outside a for");
+			      else {
+				  	sprintf (genstr, "J%1d:", continue_label); /* unconditional jump */
+				  	generate (genstr);
+				  }
 			    }
 			| Quit
-			    { bc_exit (0); }
+			    { exit (0); }
 			| Halt
 			    { generate ("h"); }
 			| Return return_expression
 			    { generate ("R"); }
 			| For 
 			    {
-			      $1 = break_label; 
-			      break_label = next_label++;
+			      $1 = break_label; /* save the old break label to $1, because the for block
+				                      introduce a block scope. the old break label will be
+									  restored after the for block. */
+
+			      break_label = next_label++; /* allocate a new break label used in the `for block`*/
 			    }
 			  '(' opt_expression ';'
 			    {
-			      if ($4 & EX_COMP)
-				ct_warn ("Comparison in first for expression");
-			      if ($4 & EX_VOID)
-				yyerror ("first expression is void");
-			      if (!($4 & EX_EMPTY))
-				generate ("p");
+			      if ($4 & 2)
+					warn ("Comparison in first for expression");
+			      if ($4 >= 0)
+					generate ("p");
 			      $4 = next_label++;
-			      snprintf (genstr, genlen, "N%1d:", $4);
+			      sprintf (genstr, "N%1d:", $4); /* create a new label here, 
+				  									before the second opt_expression */
 			      generate (genstr);
 			    }
 			  opt_expression ';'
 			    {
-			      if ($7 & EX_VOID)
-				yyerror ("second expression is void");
-			      if ($7 & EX_EMPTY ) generate ("1");
+			      if ($7 < 0) generate ("1"); /* if opt_expression is NULL, set TOS to 1. */
 			      $7 = next_label++;
-			      snprintf (genstr, genlen, "B%1d:J%1d:", $7,
-			      		break_label);
+			      sprintf (genstr, "B%1d:J%1d:", $7, break_label); /* Test TOS if 
+				  					TOS != 0, jump to $7(content of the for block), 
+									otherwise jump to break_label, remove TOS. */
 			      generate (genstr);
-			      $<i_value>$ = continue_label;
-			      continue_label = next_label++;
-			      snprintf (genstr, genlen, "N%1d:", 
-			      		continue_label);
+			      $<i_value>$ = continue_label; /* $<i_value>$ is the current block,
+				                                  save the continue_label to $<i_value>$,
+												  because for block introduce a block scope,
+												  continue label will be restored after
+												  the for block. */
+			      continue_label = next_label++; 
+			      sprintf (genstr, "N%1d:", continue_label); /* a new continue label point to the
+				                                               start of the third statement. */
 			      generate (genstr);
 			    }
 			  opt_expression ')'
 			    {
-			      if ($10 & EX_COMP)
-				ct_warn ("Comparison in third for expression");
-			      if ($10 & EX_VOID)
-				yyerror ("third expression is void");
-			      if ($10 & EX_EMPTY)
-				snprintf (genstr, genlen, "J%1d:N%1d:", $4, $7);
+			      if ($10 & 2 )
+					warn ("Comparison in third for expression");
+			      if ($10 & 16)
+					sprintf (genstr, "J%1d:N%1d:", $4, $7); /* jump to $4, so the second expression 
+															will be executed again in the for loop,
+															$7 is the label indicating the content of the
+															for statement, note that $7 is assigned in
+															the $9 block, (but generated here). */
 			      else
-				snprintf (genstr, genlen, "pJ%1d:N%1d:", $4, $7);
+					sprintf (genstr, "pJ%1d:N%1d:", $4, $7);
 			      generate (genstr);
 			    }
 			  opt_newline statement
 			    {
-			      snprintf (genstr, genlen, "J%1d:N%1d:",
+			      sprintf (genstr, "J%1d:N%1d:",  /* create a new label point to the end 
+				                                     of the for block.*/
 				       continue_label, break_label);
 			      generate (genstr);
-			      break_label = $1;
-			      continue_label = $<i_value>9;
+			      break_label = $1; 			/* end of for block, restore break label. */
+			      continue_label = $<i_value>9; /* end of for block, restore continue label. */
 			    }
 			| If '(' expression ')' 
 			    {
-			      if ($3 & EX_VOID)
-				yyerror ("void expression");
 			      $3 = if_label;
 			      if_label = next_label++;
-			      snprintf (genstr, genlen, "Z%1d:", if_label);
+			      sprintf (genstr, "Z%1d:", if_label);
 			      generate (genstr);
 			    }
 			  opt_newline statement  opt_else
 			    {
-			      snprintf (genstr, genlen, "N%1d:", if_label); 
+			      sprintf (genstr, "N%1d:", if_label); 
 			      generate (genstr);
 			      if_label = $3;
 			    }
 			| While 
 			    {
-			      $1 = continue_label;
-			      continue_label = next_label++;
-			      snprintf (genstr, genlen, "N%1d:", 
-					continue_label);
+			      $1 = next_label++;
+			      sprintf (genstr, "N%1d:", $1);
 			      generate (genstr);
 			    }
 			'(' expression 
 			    {
-			      if ($4 & EX_VOID)
-				yyerror ("void expression");
 			      $4 = break_label; 
 			      break_label = next_label++;
-			      snprintf (genstr, genlen, "Z%1d:", break_label);
+			      sprintf (genstr, "Z%1d:", break_label);
 			      generate (genstr);
 			    }
 			')' opt_newline statement
 			    {
-			      snprintf (genstr, genlen, "J%1d:N%1d:", 
-					continue_label, break_label);
+			      sprintf (genstr, "J%1d:N%1d:", $1, break_label);
 			      generate (genstr);
 			      break_label = $4;
-			      continue_label = $1;
 			    }
 			| '{' statement_list '}'
 			    { $$ = 0; }
 			| Print
-			    {  ct_warn ("print statement"); }
+			    {  warn ("print statement"); }
 			  print_list
 			;
 print_list		: print_element
@@ -319,40 +300,29 @@ print_element		: STRING
 			      free ($1);
 			    }
 			| expression
-			    {
-			      if ($1 & EX_VOID)
-				yyerror ("void expression in print");
-			      generate ("P");
-			    }
+			    { generate ("P"); }
  			;
 opt_else		: /* nothing */
 			| Else 
 			    {
-			      ct_warn ("else clause in if statement");
+			      warn ("else clause in if statement");
 			      $1 = next_label++;
-			      snprintf (genstr, genlen, "J%d:N%1d:", $1,
-					if_label); 
+			      sprintf (genstr, "J%d:N%1d:", $1, if_label); 
 			      generate (genstr);
 			      if_label = $1;
 			    }
 			  opt_newline statement
-			;
-function 		: Define opt_void NAME '(' opt_parameter_list ')' opt_newline
+function 		: Define NAME '(' opt_parameter_list ')' opt_newline
      			  '{' required_eol opt_auto_define_list 
-			    { char *params, *autos;
+			    {
 			      /* Check auto list against parameter list? */
-			      check_params ($5,$10);
-			      params = arg_str ($5);
-			      autos  = arg_str ($10);
-			      set_genstr_size (30 + strlen (params)
-					       + strlen (autos));
-			      cur_func = lookup($3,FUNCTDEF);
-			      snprintf (genstr, genlen, "F%d,%s.%s[", cur_func,
-					params, autos); 
+			      check_params ($4,$9);
+			      sprintf (genstr, "F%d,%s.%s[",
+				       lookup($2,FUNCTDEF), 
+				       arg_str ($4), arg_str ($9));
 			      generate (genstr);
-			      functions[cur_func].f_void = $2;
-			      free_args ($5);
-			      free_args ($10);
+			      free_args ($4);
+			      free_args ($9);
 			      $1 = next_label;
 			      next_label = 1;
 			    }
@@ -360,15 +330,6 @@ function 		: Define opt_void NAME '(' opt_parameter_list ')' opt_newline
 			    {
 			      generate ("0R]");
 			      next_label = $1;
-			      cur_func = -1;
-			    }
-			;
-opt_void		: /* empty */
-			    { $$ = 0; }
-			| Void
-			    {
-			      $$ = 1;
-			      ct_warn ("void functions");
 			    }
 			;
 opt_parameter_list	: /* empty */ 
@@ -387,25 +348,13 @@ define_list 		: NAME
 			| NAME '[' ']'
 			    { $$ = nextarg (NULL, lookup ($1,ARRAY), FALSE); }
 			| '*' NAME '[' ']'
-			    { $$ = nextarg (NULL, lookup ($2,ARRAY), TRUE);
-			      ct_warn ("Call by variable arrays");
-			    }
-			| '&' NAME '[' ']'
-			    { $$ = nextarg (NULL, lookup ($2,ARRAY), TRUE);
-			      ct_warn ("Call by variable arrays");
-			    }
+			    { $$ = nextarg (NULL, lookup ($2,ARRAY), TRUE); }
 			| define_list ',' NAME
 			    { $$ = nextarg ($1, lookup ($3,SIMPLE), FALSE); }
 			| define_list ',' NAME '[' ']'
 			    { $$ = nextarg ($1, lookup ($3,ARRAY), FALSE); }
 			| define_list ',' '*' NAME '[' ']'
-			    { $$ = nextarg ($1, lookup ($4,ARRAY), TRUE);
-			      ct_warn ("Call by variable arrays");
-			    }
-			| define_list ',' '&' NAME '[' ']'
-			    { $$ = nextarg ($1, lookup ($4,ARRAY), TRUE);
-			      ct_warn ("Call by variable arrays");
-			    }
+			    { $$ = nextarg ($1, lookup ($4,ARRAY), TRUE); }
 			;
 opt_argument_list	: /* empty */
 			    { $$ = NULL; }
@@ -413,49 +362,40 @@ opt_argument_list	: /* empty */
 			;
 argument_list 		: expression
 			    {
-			      if ($1 & EX_COMP)
-				ct_warn ("comparison in argument");
-			      if ($1 & EX_VOID)
-				yyerror ("void argument");
+			      if ($1 & 2) warn ("comparison in argument");
 			      $$ = nextarg (NULL,0,FALSE);
 			    }
 			| NAME '[' ']'
 			    {
-			      snprintf (genstr, genlen, "K%d:",
-					-lookup ($1,ARRAY));
+			      sprintf (genstr, "K%d:", -lookup ($1,ARRAY));
 			      generate (genstr);
 			      $$ = nextarg (NULL,1,FALSE);
 			    }
 			| argument_list ',' expression
 			    {
-			      if ($3 & EX_COMP)
-				ct_warn ("comparison in argument");
-			      if ($3 & EX_VOID)
-				yyerror ("void argument");
+			      if ($3 & 2) warn ("comparison in argument");
 			      $$ = nextarg ($1,0,FALSE);
 			    }
 			| argument_list ',' NAME '[' ']'
 			    {
-			      snprintf (genstr, genlen, "K%d:", 
-					-lookup ($3,ARRAY));
+			      sprintf (genstr, "K%d:", -lookup ($3,ARRAY));
 			      generate (genstr);
 			      $$ = nextarg ($1,1,FALSE);
 			    }
 			;
 
-/* Expression lval meanings!  (Bits mean something!)  (See defines above)
+/* Expression lval meanings!  (Bits mean something!)
  *  0 => Top op is assignment.
  *  1 => Top op is not assignment.
  *  2 => Comparison is somewhere in expression.
  *  4 => Expression is in parenthesis.
- *  8 => Expression is void!
  * 16 => Empty optional expression.
  */
 
 opt_expression 		: /* empty */
 			    {
-			      $$ = EX_EMPTY;
-			      ct_warn ("Missing expression in for statement");
+			      $$ = 16;
+			      warn ("Missing expression in for statement");
 			    }
 			| expression
 			;
@@ -463,21 +403,13 @@ return_expression	: /* empty */
 			    {
 			      $$ = 0;
 			      generate ("0");
-			      if (cur_func == -1)
-				yyerror("Return outside of a function.");
 			    }
 			| expression
 			    {
-			      if ($1 & EX_COMP)
-				ct_warn ("comparison in return expression");
-			      if (!($1 & EX_PAREN))
-				ct_warn ("return expression requires parenthesis");
-			      if ($1 & EX_VOID)
-				yyerror("return requires non-void expression");
-			      if (cur_func == -1)
-				yyerror("Return outside of a function.");
-			      else if (functions[cur_func].f_void)
-				yyerror("Return expression in a void function.");
+			      if ($1 & 2)
+				warn ("comparison in return expresion");
+			      if (!($1 & 4))
+				warn ("return expression requires parenthesis");
 			    }
 			;
 expression		:  named_expression ASSIGN_OP 
@@ -485,76 +417,66 @@ expression		:  named_expression ASSIGN_OP
 			      if ($2 != '=')
 				{
 				  if ($1 < 0)
-				    snprintf (genstr, genlen, "DL%d:", -$1);
+				    sprintf (genstr, "DL%d:", -$1);
 				  else
-				    snprintf (genstr, genlen, "l%d:", $1);
+				    sprintf (genstr, "l%d:", $1);
 				  generate (genstr);
 				}
 			    }
 			  expression
 			    {
-			      if ($4 & EX_ASSGN)
-				ct_warn("comparison in assignment");
-			      if ($4 & EX_VOID)
-				yyerror("Assignment of a void expression");
+			      if ($4 & 2) warn("comparison in assignment");
 			      if ($2 != '=')
 				{
-				  snprintf (genstr, genlen, "%c", $2);
+				  sprintf (genstr, "%c", $2);
 				  generate (genstr);
 				}
 			      if ($1 < 0)
-				snprintf (genstr, genlen, "S%d:", -$1);
+				sprintf (genstr, "S%d:", -$1);
 			      else
-				snprintf (genstr, genlen, "s%d:", $1);
+				sprintf (genstr, "s%d:", $1);
 			      generate (genstr);
-			      $$ = EX_ASSGN;
+			      $$ = 0;
 			    }
+			;
 			| expression AND 
 			    {
-			      ct_warn("&& operator");
+			      warn("&& operator");
 			      $2 = next_label++;
-			      snprintf (genstr, genlen, "DZ%d:p", $2);
+			      sprintf (genstr, "DZ%d:p", $2);
 			      generate (genstr);
 			    }
 			  expression
 			    {
-			      if (($1 & EX_VOID) || ($4 & EX_VOID))
-				yyerror ("void expression with &&");
-			      snprintf (genstr, genlen, "DZ%d:p1N%d:", $2, $2);
+			      sprintf (genstr, "DZ%d:p1N%d:", $2, $2);
 			      generate (genstr);
-			      $$ = ($1 | $4) & ~EX_PAREN;
+			      $$ = ($1 | $4) & ~4;
 			    }
 			| expression OR
 			    {
-			      ct_warn("|| operator");
+			      warn("|| operator");
 			      $2 = next_label++;
-			      snprintf (genstr, genlen, "B%d:", $2);
+			      sprintf (genstr, "B%d:", $2);
 			      generate (genstr);
 			    }
 			  expression
  			    {
 			      int tmplab;
-			      if (($1 & EX_VOID) || ($4 & EX_VOID))
-				yyerror ("void expression with ||");
 			      tmplab = next_label++;
-			      snprintf (genstr, genlen, "B%d:0J%d:N%d:1N%d:",
+			      sprintf (genstr, "B%d:0J%d:N%d:1N%d:",
 				       $2, tmplab, $2, tmplab);
 			      generate (genstr);
-			      $$ = ($1 | $4) & ~EX_PAREN;
+			      $$ = ($1 | $4) & ~4;
 			    }
 			| NOT expression
 			    {
-			      if ($2 & EX_VOID)
-				yyerror ("void expression with !");
-			      $$ = $2 & ~EX_PAREN;
-			      ct_warn("! operator");
+			      $$ = $2 & ~4;
+			      warn("! operator");
 			      generate ("!");
 			    }
 			| expression REL_OP expression
 			    {
-			      if (($1 & EX_VOID) || ($3 & EX_VOID))
-				yyerror ("void expression with comparison");
-			      $$ = EX_REG | EX_COMP;
+			      $$ = 3;
 			      switch (*($2))
 				{
 				case '=':
@@ -579,70 +501,55 @@ expression		:  named_expression ASSIGN_OP
 				    generate (">");
 				  break;
 				}
-                              free($2);
 			    }
 			| expression '+' expression
 			    {
-			      if (($1 & EX_VOID) || ($3 & EX_VOID))
-				yyerror ("void expression with +");
 			      generate ("+");
-			      $$ = ($1 | $3) & ~EX_PAREN;
+			      $$ = ($1 | $3) & ~4;
 			    }
 			| expression '-' expression
 			    {
-			      if (($1 & EX_VOID) || ($3 & EX_VOID))
-				yyerror ("void expression with -");
 			      generate ("-");
-			      $$ = ($1 | $3) & ~EX_PAREN;
+			      $$ = ($1 | $3) & ~4;
 			    }
 			| expression '*' expression
 			    {
-			      if (($1 & EX_VOID) || ($3 & EX_VOID))
-				yyerror ("void expression with *");
 			      generate ("*");
-			      $$ = ($1 | $3) & ~EX_PAREN;
+			      $$ = ($1 | $3) & ~4;
 			    }
 			| expression '/' expression
 			    {
-			      if (($1 & EX_VOID) || ($3 & EX_VOID))
-				yyerror ("void expression with /");
 			      generate ("/");
-			      $$ = ($1 | $3) & ~EX_PAREN;
+			      $$ = ($1 | $3) & ~4;
 			    }
 			| expression '%' expression
 			    {
-			      if (($1 & EX_VOID) || ($3 & EX_VOID))
-				yyerror ("void expression with %");
 			      generate ("%");
-			      $$ = ($1 | $3) & ~EX_PAREN;
+			      $$ = ($1 | $3) & ~4;
 			    }
 			| expression '^' expression
 			    {
-			      if (($1 & EX_VOID) || ($3 & EX_VOID))
-				yyerror ("void expression with ^");
 			      generate ("^");
-			      $$ = ($1 | $3) & ~EX_PAREN;
+			      $$ = ($1 | $3) & ~4;
 			    }
 			| '-' expression  %prec UNARY_MINUS
 			    {
-			      if ($2 & EX_VOID)
-				yyerror ("void expression with unary -");
 			      generate ("n");
-			      $$ = $2 & ~EX_PAREN;
+			      $$ = $2 & ~4;
 			    }
 			| named_expression
 			    {
-			      $$ = EX_REG;
+			      $$ = 1;
 			      if ($1 < 0)
-				snprintf (genstr, genlen, "L%d:", -$1);
+				sprintf (genstr, "L%d:", -$1);
 			      else
-				snprintf (genstr, genlen, "l%d:", $1);
+				sprintf (genstr, "l%d:", $1);
 			      generate (genstr);
 			    }
 			| NUMBER
 			    {
 			      int len = strlen($1);
-			      $$ = EX_REG;
+			      $$ = 1;
 			      if (len == 1 && *$1 == '0')
 				generate ("0");
 			      else if (len == 1 && *$1 == '1')
@@ -656,115 +563,82 @@ expression		:  named_expression ASSIGN_OP
 			      free ($1);
 			    }
 			| '(' expression ')'
-			    { 
-			      if ($2 & EX_VOID)
-				yyerror ("void expression in parenthesis");
-			      $$ = $2 | EX_REG | EX_PAREN;
-			    }
+			    { $$ = $2 | 5; }
 			| NAME '(' opt_argument_list ')'
-			    { int fn;
-			      fn = lookup ($1,FUNCT);
-			      if (functions[fn].f_void)
-				$$ = EX_VOID;
-			      else
-				$$ = EX_REG;
+			    {
+			      $$ = 1;
 			      if ($3 != NULL)
-				{ char *params = call_str ($3);
-				  set_genstr_size (20 + strlen (params));
-				  snprintf (genstr, genlen, "C%d,%s:", fn,
-				  	    params);
+				{ 
+				  sprintf (genstr, "C%d,%s:",
+					   lookup ($1,FUNCT),
+					   call_str ($3));
 				  free_args ($3);
 				}
 			      else
 				{
-				  snprintf (genstr, genlen, "C%d:", fn);
+				  sprintf (genstr, "C%d:", lookup ($1,FUNCT));
 				}
 			      generate (genstr);
 			    }
 			| INCR_DECR named_expression
 			    {
-			      $$ = EX_REG;
+			      $$ = 1;
 			      if ($2 < 0)
 				{
 				  if ($1 == '+')
-				    snprintf (genstr, genlen, "DA%d:L%d:", -$2, -$2);
+				    sprintf (genstr, "DA%d:L%d:", -$2, -$2);
 				  else
-				    snprintf (genstr, genlen, "DM%d:L%d:", -$2, -$2);
+				    sprintf (genstr, "DM%d:L%d:", -$2, -$2);
 				}
 			      else
 				{
 				  if ($1 == '+')
-				    snprintf (genstr, genlen, "i%d:l%d:", $2, $2);
+				    sprintf (genstr, "i%d:l%d:", $2, $2);
 				  else
-				    snprintf (genstr, genlen, "d%d:l%d:", $2, $2);
+				    sprintf (genstr, "d%d:l%d:", $2, $2);
 				}
 			      generate (genstr);
 			    }
 			| named_expression INCR_DECR
 			    {
-			      $$ = EX_REG;
+			      $$ = 1;
 			      if ($1 < 0)
 				{
-				  snprintf (genstr, genlen, "DL%d:x", -$1);
+				  sprintf (genstr, "DL%d:x", -$1);
 				  generate (genstr); 
 				  if ($2 == '+')
-				    snprintf (genstr, genlen, "A%d:", -$1);
+				    sprintf (genstr, "A%d:", -$1);
 				  else
-				      snprintf (genstr, genlen, "M%d:", -$1);
+				      sprintf (genstr, "M%d:", -$1);
 				}
 			      else
 				{
-				  snprintf (genstr, genlen, "l%d:", $1);
+				  sprintf (genstr, "l%d:", $1);
 				  generate (genstr);
 				  if ($2 == '+')
-				    snprintf (genstr, genlen, "i%d:", $1);
+				    sprintf (genstr, "i%d:", $1);
 				  else
-				    snprintf (genstr, genlen, "d%d:", $1);
+				    sprintf (genstr, "d%d:", $1);
 				}
 			      generate (genstr);
 			    }
 			| Length '(' expression ')'
-			    {
-			      if ($3 & EX_VOID)
-				yyerror ("void expression in length()");
-			      generate ("cL");
-			      $$ = EX_REG;
-			    }
+			    { generate ("cL"); $$ = 1;}
 			| Sqrt '(' expression ')'
-			    {
-			      if ($3 & EX_VOID)
-				yyerror ("void expression in sqrt()");
-			      generate ("cR");
-			      $$ = EX_REG;
-			    }
+			    { generate ("cR"); $$ = 1;}
 			| Scale '(' expression ')'
-			    {
-			      if ($3 & EX_VOID)
-				yyerror ("void expression in scale()");
-			      generate ("cS");
-			      $$ = EX_REG;
-			    }
+			    { generate ("cS"); $$ = 1;}
 			| Read '(' ')'
 			    {
-			      ct_warn ("read function");
-			      generate ("cI");
-			      $$ = EX_REG;
-			    }
-			| Random '(' ')'
-			    {
-			      ct_warn ("random function");
-			      generate ("cX");
-			      $$ = EX_REG;
+			      warn ("read function");
+			      generate ("cI"); $$ = 1;
 			    }
 			;
 named_expression	: NAME
 			    { $$ = lookup($1,SIMPLE); }
 			| NAME '[' expression ']'
 			    {
-			      if ($3 & EX_VOID)
-				yyerror("void expression as subscript");
-			      if ($3 & EX_COMP)
-				ct_warn("comparison in subscript");
+			      if ($3 > 1) warn("comparison in subscript");
 			      $$ = lookup($1,ARRAY);
 			    }
 			| Ibase
@@ -775,19 +649,20 @@ named_expression	: NAME
 			    { $$ = 2; }
 			| HistoryVar
 			    { $$ = 3;
-			      ct_warn ("History variable");
+			      warn ("History variable");
 			    }
 			| Last
 			    { $$ = 4;
-			      ct_warn ("Last variable");
+			      warn ("Last variable");
 			    }
 			;
 
 
-required_eol		: { ct_warn ("End of line required"); }
+required_eol		: { warn ("End of line required"); }
 			| ENDOFLINE
 			| required_eol ENDOFLINE
-			  { ct_warn ("Too many end of lines"); }
+			  { warn ("Too many end of lines"); }
 			;
 
 %%
+

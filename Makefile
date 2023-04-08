@@ -1,3 +1,4 @@
+# Generated automatically from Makefile.in by configure.
 # Makefile.in generated automatically by automake 1.4 from Makefile.am
 
 # Copyright (C) 1994, 1995-8, 1999 Free Software Foundation, Inc.
@@ -11,45 +12,44 @@
 # PARTICULAR PURPOSE.
 
 
-SHELL = @SHELL@
+SHELL = /bin/sh
 
-srcdir = @srcdir@
-top_srcdir = @top_srcdir@
-VPATH = @srcdir@
-prefix = @prefix@
-exec_prefix = @exec_prefix@
+srcdir = .
+top_srcdir = .
+prefix = /usr/local
+exec_prefix = ${prefix}
 
-bindir = @bindir@
-sbindir = @sbindir@
-libexecdir = @libexecdir@
-datadir = @datadir@
-sysconfdir = @sysconfdir@
-sharedstatedir = @sharedstatedir@
-localstatedir = @localstatedir@
-libdir = @libdir@
-infodir = @infodir@
-mandir = @mandir@
-includedir = @includedir@
+bindir = ${exec_prefix}/bin
+sbindir = ${exec_prefix}/sbin
+libexecdir = ${exec_prefix}/libexec
+datadir = ${prefix}/share
+sysconfdir = ${prefix}/etc
+sharedstatedir = ${prefix}/com
+localstatedir = ${prefix}/var
+libdir = ${exec_prefix}/lib
+infodir = ${prefix}/info
+mandir = ${prefix}/man
+includedir = ${prefix}/include
 oldincludedir = /usr/include
 
 DESTDIR =
 
-pkgdatadir = $(datadir)/@PACKAGE@
-pkglibdir = $(libdir)/@PACKAGE@
-pkgincludedir = $(includedir)/@PACKAGE@
+pkgdatadir = $(datadir)/bc
+pkglibdir = $(libdir)/bc
+pkgincludedir = $(includedir)/bc
 
 top_builddir = .
 
-ACLOCAL = @ACLOCAL@
-AUTOCONF = @AUTOCONF@
-AUTOMAKE = @AUTOMAKE@
-AUTOHEADER = @AUTOHEADER@
+ACLOCAL = aclocal
+AUTOCONF = autoconf
+AUTOMAKE = automake
+AUTOHEADER = autoheader
 
-INSTALL = @INSTALL@
-INSTALL_PROGRAM = @INSTALL_PROGRAM@ $(AM_INSTALL_PROGRAM_FLAGS)
-INSTALL_DATA = @INSTALL_DATA@
-INSTALL_SCRIPT = @INSTALL_SCRIPT@
-transform = @program_transform_name@
+INSTALL = /usr/bin/install -c
+INSTALL_PROGRAM = ${INSTALL} $(AM_INSTALL_PROGRAM_FLAGS)
+INSTALL_DATA = ${INSTALL} -m 644
+INSTALL_SCRIPT = ${INSTALL_PROGRAM}
+transform = s,x,x,
 
 NORMAL_INSTALL = :
 PRE_INSTALL = :
@@ -57,14 +57,14 @@ POST_INSTALL = :
 NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
-CC = @CC@
-LEX = @LEX@
-MAKEINFO = @MAKEINFO@
-PACKAGE = @PACKAGE@
-RANLIB = @RANLIB@
-READLINELIB = @READLINELIB@
-VERSION = @VERSION@
-YACC = @YACC@
+CC = gcc
+LEX = flex -I8
+MAKEINFO = /home/mayan/Github/bc-1.06/missing makeinfo
+PACKAGE = bc
+RANLIB = ranlib
+READLINELIB = 
+VERSION = 1.06
+YACC = bison -y
 
 SUBDIRS = lib bc dc doc
 
@@ -135,7 +135,7 @@ maintainer-clean-hdr:
 #     (which will cause the Makefiles to be regenerated when you run `make');
 # (2) otherwise, pass the desired values on the `make' command line.
 
-@SET_MAKE@
+
 
 all-recursive install-data-recursive install-exec-recursive \
 installdirs-recursive install-recursive uninstall-recursive  \

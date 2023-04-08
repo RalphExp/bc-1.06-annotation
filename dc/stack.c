@@ -1,12 +1,11 @@
 /* 
  * implement stack functions for dc
  *
- * Copyright (C) 1994, 1997, 1998, 2000, 2005, 2006, 2008, 2012, 2016
- * Free Software Foundation, Inc.
+ * Copyright (C) 1994, 1997, 1998 Free Software Foundation, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3, or (at your option)
+ * the Free Software Foundation; either version 2, or (at your option)
  * any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -15,8 +14,12 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program; if not, you can either send email to this
+ * program's author (see below) or write to:
  *
+ *    The Free Software Foundation, Inc.
+ *    59 Temple Place, Suite 330
+ *    Boston, MA 02111 USA
  */
 
 /* This module is the only one that knows what stacks (both the
@@ -35,13 +38,10 @@
 #include "dc-regdef.h"
 
 /* an oft-used error message: */
-#define Empty_Stack do{					\
-    fprintf(stderr, "%s: stack empty\n", progname);	\
-    checkferror_output(stderr);				\
-  }while(0)
+#define Empty_Stack	fprintf(stderr, "%s: stack empty\n", progname)
 
 
-/* simple linked-list implementation suffices: */
+/* simple linked-list implementaion suffices: */
 struct dc_list {
 	dc_data value;
 	struct dc_array *array;	/* opaque */
@@ -53,8 +53,7 @@ typedef struct dc_list dc_list;
 static dc_list *dc_stack=NULL;
 
 /* the named register stacks */
-typedef dc_list *dc_listp;
-static dc_listp dc_register[DC_REGCOUNT];
+static dc_list *dc_register[DC_REGCOUNT];
 
 
 /* allocate a new dc_list item */
@@ -87,14 +86,13 @@ dc_binop DC_DECLARG((op, kscale))
 	dc_data b;
 	dc_data r;
 
-	if (dc_stack == NULL  ||  dc_stack->link == NULL){
+	if (!dc_stack || !dc_stack->link){
 		Empty_Stack;
 		return;
 	}
 	if (dc_stack->value.dc_type!=DC_NUMBER
 			|| dc_stack->link->value.dc_type!=DC_NUMBER){
 		fprintf(stderr, "%s: non-numeric value\n", progname);
-		checkferror_output(stderr);
 		return;
 	}
 	(void)dc_pop(&b);
@@ -128,14 +126,13 @@ dc_binop2 DC_DECLARG((op, kscale))
 	dc_data r1;
 	dc_data r2;
 
-	if (dc_stack == NULL  ||  dc_stack->link == NULL){
+	if (!dc_stack || !dc_stack->link){
 		Empty_Stack;
 		return;
 	}
 	if (dc_stack->value.dc_type!=DC_NUMBER
 			|| dc_stack->link->value.dc_type!=DC_NUMBER){
 		fprintf(stderr, "%s: non-numeric value\n", progname);
-		checkferror_output(stderr);
 		return;
 	}
 	(void)dc_pop(&b);
@@ -167,14 +164,13 @@ dc_cmpop DC_DECLVOID()
 	dc_data a;
 	dc_data b;
 
-	if (dc_stack == NULL  ||  dc_stack->link == NULL){
+	if (!dc_stack || !dc_stack->link){
 		Empty_Stack;
 		return 0;
 	}
 	if (dc_stack->value.dc_type!=DC_NUMBER
 			|| dc_stack->link->value.dc_type!=DC_NUMBER){
 		fprintf(stderr, "%s: non-numeric value\n", progname);
-		checkferror_output(stderr);
 		return 0;
 	}
 	(void)dc_pop(&b);
@@ -202,9 +198,7 @@ dc_triop DC_DECLARG((op, kscale))
 	dc_data c;
 	dc_data r;
 
-	if (dc_stack == NULL
-			|| dc_stack->link == NULL
-			|| dc_stack->link->link == NULL){
+	if (!dc_stack || !dc_stack->link || !dc_stack->link->link){
 		Empty_Stack;
 		return;
 	}
@@ -212,7 +206,6 @@ dc_triop DC_DECLARG((op, kscale))
 			|| dc_stack->link->value.dc_type!=DC_NUMBER
 			|| dc_stack->link->link->value.dc_type!=DC_NUMBER){
 		fprintf(stderr, "%s: non-numeric value\n", progname);
-		checkferror_output(stderr);
 		return;
 	}
 	(void)dc_pop(&c);
@@ -251,7 +244,7 @@ dc_clear_stack DC_DECLVOID()
 	dc_list *n;
 	dc_list *t;
 
-	for (n=dc_stack; n!=NULL; n=t){
+	for (n=dc_stack; n; n=t){
 		t = n->link;
 		if (n->value.dc_type == DC_NUMBER)
 			dc_free_num(&n->value.v.number);
@@ -304,7 +297,7 @@ int
 dc_top_of_stack DC_DECLARG((result))
 	dc_data *result DC_DECLEND
 {
-	if (dc_stack == NULL){
+	if (!dc_stack){
 		Empty_Stack;
 		return DC_FAIL;
 	}
@@ -315,10 +308,9 @@ dc_top_of_stack DC_DECLARG((result))
 	return DC_SUCCESS;
 }
 
-/* set *result to a dup of the value on the top of the named register stack,
- * or 0 (zero) if the stack is empty */
+/* set *result to a dup of the value on the top of the named register stack */
 /*
- * DC_FAIL is returned if an internal bug is detected
+ * DC_FAIL is returned if the named stack is empty (and *result unchanged),
  * DC_SUCCESS is returned otherwise
  */
 int
@@ -330,16 +322,12 @@ dc_register_get DC_DECLARG((regid, result))
 
 	regid = regmap(regid);
 	r = dc_register[regid];
-	if (r==NULL){
-		*result = dc_int2data(0);
-	}else if (r->value.dc_type==DC_UNINITIALIZED){
-		fprintf(stderr, "%s: BUG: register ", progname);
-		checkferror_output(stderr);
-		dc_show_id(stderr, regid, " exists but is uninitialized?\n");
+	if ( ! r ){
+		fprintf(stderr, "%s: register ", progname);
+		dc_show_id(stderr, regid, " is empty\n");
 		return DC_FAIL;
-	}else{
-		*result = dc_dup(r->value);
 	}
+	*result = dc_dup(r->value);
 	return DC_SUCCESS;
 }
 
@@ -356,7 +344,7 @@ dc_register_set DC_DECLARG((regid, value))
 
 	regid = regmap(regid);
 	r = dc_register[regid];
-	if (r == NULL)
+	if ( ! r )
 		dc_register[regid] = dc_alloc();
 	else if (r->value.dc_type == DC_NUMBER)
 		dc_free_num(&r->value.v.number);
@@ -381,7 +369,7 @@ dc_pop DC_DECLARG((result))
 	dc_list *r;
 
 	r = dc_stack;
-	if (r==NULL || r->value.dc_type==DC_UNINITIALIZED){
+	if (!r){
 		Empty_Stack;
 		return DC_FAIL;
 	}
@@ -408,9 +396,8 @@ dc_register_pop DC_DECLARG((stackid, result))
 
 	stackid = regmap(stackid);
 	r = dc_register[stackid];
-	if (r==NULL || r->value.dc_type==DC_UNINITIALIZED){
+	if (!r){
 		fprintf(stderr, "%s: stack register ", progname);
-		checkferror_output(stderr);
 		dc_show_id(stderr, stackid, " is empty\n");
 		return DC_FAIL;
 	}
@@ -424,44 +411,6 @@ dc_register_pop DC_DECLARG((stackid, result))
 }
 
 
-/* cyclically rotate the "n" topmost elements of the stack;
- *   negative "n" rotates forward (topomost element becomes n-th deep)
- *   positive "n" rotates backward (topmost element becomes 2nd deep)
- *
- * If stack depth is less than "n", whole stack is rotated
- * (without raising an error).
- */
-void
-dc_stack_rotate(int n)
-{
-	dc_list *p; /* becomes bottom of sub-stack */
-	dc_list *r; /* predecessor of "p" */
-	int absn = n<0 ? -n : n;
-
-	/* always do nothing for empty stack or degenerate rotation depth */
-	if (!dc_stack || absn < 2)
-		return;
-	/* find bottom of rotation sub-stack */
-	r = NULL;
-	for (p=dc_stack; p->link && --absn>0; p=p->link)
-		r = p;
-	/* if stack has only one element, treat rotation as no-op */
-	if (!r)
-		return;
-	/* do the rotation, in appropriate direction */
-	if (n > 0) {
-		r->link = p->link;
-		p->link = dc_stack;
-		dc_stack = p;
-	} else {
-		dc_list *new_tos = dc_stack->link;
-		dc_stack->link = p->link;
-		p->link = dc_stack;
-		dc_stack = new_tos;
-	}
-}
-
-
 /* tell how many entries are currently on the evaluation stack */
 int
 dc_tell_stackdepth DC_DECLVOID()
@@ -469,7 +418,7 @@ dc_tell_stackdepth DC_DECLVOID()
 	dc_list *n;
 	int depth=0;
 
-	for (n=dc_stack; n!=NULL; n=n->link)
+	for (n=dc_stack; n; n=n->link)
 		++depth;
 	return depth;
 }
@@ -493,7 +442,7 @@ dc_tell_length DC_DECLARG((value, discard_p))
 		if (discard_p == DC_TOSS)
 			dc_free_num(&value.v.number);
 	} else if (value.dc_type == DC_STRING) {
-		length = (int) dc_strlen(value.v.string);
+		length = dc_strlen(value.v.string);
 		if (discard_p == DC_TOSS)
 			dc_free_str(&value.v.string);
 	} else {
@@ -513,7 +462,7 @@ dc_printall DC_DECLARG((obase))
 {
 	dc_list *n;
 
-	for (n=dc_stack; n!=NULL; n=n->link)
+	for (n=dc_stack; n; n=n->link)
 		dc_print(n->value, obase, DC_WITHNL, DC_KEEP);
 }
 
@@ -526,7 +475,7 @@ dc_get_stacked_array DC_DECLARG((array_id))
 	int array_id DC_DECLEND
 {
 	dc_list *r = dc_register[regmap(array_id)];
-	return r == NULL ? NULL : r->array;
+	return r ? r->array : NULL;
 }
 
 /* set the current array head for the named array */
@@ -539,16 +488,7 @@ dc_set_stacked_array DC_DECLARG((array_id, new_head))
 
 	array_id = regmap(array_id);
 	r = dc_register[array_id];
-	if (r == NULL)
+	if ( ! r )
 		r = dc_register[array_id] = dc_alloc();
 	r->array = new_head;
 }
-
-
-/*
- * Local Variables:
- * mode: C
- * tab-width: 4
- * End:
- * vi: set ts=4 :
- */

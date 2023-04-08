@@ -5,6 +5,8 @@ define f (x) {
 }
 
 for (a=1; a<600; a++) b=f(a)
-"length(b)= "; length(b)
+"
+"
+"b=";b
 quit
 

@@ -1,3 +1,4 @@
+# Generated automatically from Makefile.in by configure.
 # Makefile.in generated automatically by automake 1.4 from Makefile.am
 
 # Copyright (C) 1994, 1995-8, 1999 Free Software Foundation, Inc.
@@ -11,45 +12,44 @@
 # PARTICULAR PURPOSE.
 
 
-SHELL = @SHELL@
+SHELL = /bin/sh
 
-srcdir = @srcdir@
-top_srcdir = @top_srcdir@
-VPATH = @srcdir@
-prefix = @prefix@
-exec_prefix = @exec_prefix@
+srcdir = .
+top_srcdir = ..
+prefix = /usr/local
+exec_prefix = ${prefix}
 
-bindir = @bindir@
-sbindir = @sbindir@
-libexecdir = @libexecdir@
-datadir = @datadir@
-sysconfdir = @sysconfdir@
-sharedstatedir = @sharedstatedir@
-localstatedir = @localstatedir@
-libdir = @libdir@
-infodir = @infodir@
-mandir = @mandir@
-includedir = @includedir@
+bindir = ${exec_prefix}/bin
+sbindir = ${exec_prefix}/sbin
+libexecdir = ${exec_prefix}/libexec
+datadir = ${prefix}/share
+sysconfdir = ${prefix}/etc
+sharedstatedir = ${prefix}/com
+localstatedir = ${prefix}/var
+libdir = ${exec_prefix}/lib
+infodir = ${prefix}/info
+mandir = ${prefix}/man
+includedir = ${prefix}/include
 oldincludedir = /usr/include
 
 DESTDIR =
 
-pkgdatadir = $(datadir)/@PACKAGE@
-pkglibdir = $(libdir)/@PACKAGE@
-pkgincludedir = $(includedir)/@PACKAGE@
+pkgdatadir = $(datadir)/bc
+pkglibdir = $(libdir)/bc
+pkgincludedir = $(includedir)/bc
 
 top_builddir = ..
 
-ACLOCAL = @ACLOCAL@
-AUTOCONF = @AUTOCONF@
-AUTOMAKE = @AUTOMAKE@
-AUTOHEADER = @AUTOHEADER@
+ACLOCAL = aclocal
+AUTOCONF = autoconf
+AUTOMAKE = automake
+AUTOHEADER = autoheader
 
-INSTALL = @INSTALL@
-INSTALL_PROGRAM = @INSTALL_PROGRAM@ $(AM_INSTALL_PROGRAM_FLAGS)
-INSTALL_DATA = @INSTALL_DATA@
-INSTALL_SCRIPT = @INSTALL_SCRIPT@
-transform = @program_transform_name@
+INSTALL = /usr/bin/install -c
+INSTALL_PROGRAM = ${INSTALL} $(AM_INSTALL_PROGRAM_FLAGS)
+INSTALL_DATA = ${INSTALL} -m 644
+INSTALL_SCRIPT = ${INSTALL_PROGRAM}
+transform = s,x,x,
 
 NORMAL_INSTALL = :
 PRE_INSTALL = :
@@ -57,60 +57,76 @@ POST_INSTALL = :
 NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
-CC = @CC@
-LEX = @LEX@
-MAKEINFO = @MAKEINFO@
-PACKAGE = @PACKAGE@
-RANLIB = @RANLIB@
-READLINELIB = @READLINELIB@
-VERSION = @VERSION@
-YACC = @YACC@
+CC = gcc
+LEX = flex -I8
+MAKEINFO = /home/mayan/Github/bc-1.06/missing makeinfo
+PACKAGE = bc
+RANLIB = ranlib
+READLINELIB = 
+VERSION = 1.06
+YACC = bison -y
 
-bin_PROGRAMS = dc
+bin_PROGRAMS = bc
 
-dc_SOURCES = dc.c misc.c eval.c stack.c array.c numeric.c string.c
-noinst_HEADERS = dc.h dc-proto.h dc-regdef.h
+bc_SOURCES = main.c bc.y scan.l execute.c load.c storage.c util.c global.c
 
-INCLUDES = -I$(srcdir)/.. -I$(srcdir)/../h
-LDADD = ../lib/libbc.a
+EXTRA_DIST = bc.h bcdefs.h const.h fix-libmath_h global.h libmath.b proto.h              sbc.y
 
-MAINTAINERCLEANFILES = Makefile.in
+noinst_HEADERS = libmath.h
 
-CFLAGS = @CFLAGS@ -Wall -funsigned-char
+DISTCLEANFILES = sbc sbc.c sbc.h
+
+MAINTAINERCLEANFILES = Makefile.in libmath.h bc.c bc.h scan.c
+
+INCLUDES = -I$(srcdir) -I$(srcdir)/../h
+LIBBC = ../lib/libbc.a
+LIBL = 
+LDADD = $(LIBBC) $(LIBL) 
+
+YFLAGS = -d
+
+CFLAGS = -g -O2 -Wall -funsigned-char
+
+fbcOBJ = main.o bc.o scan.o execute.o global.o load.o storage.o util.o
+
+sbcOBJ = main.o sbc.o scan.o execute.o global.o load.o storage.o util.o
 mkinstalldirs = $(SHELL) $(top_srcdir)/mkinstalldirs
 CONFIG_HEADER = ../config.h
 CONFIG_CLEAN_FILES = 
 PROGRAMS =  $(bin_PROGRAMS)
 
 
-DEFS = @DEFS@ -I. -I$(srcdir) -I..
-CPPFLAGS = @CPPFLAGS@
-LDFLAGS = @LDFLAGS@
-LIBS = @LIBS@
-dc_OBJECTS =  dc.o misc.o eval.o stack.o array.o numeric.o string.o
-dc_LDADD = $(LDADD)
-dc_DEPENDENCIES =  ../lib/libbc.a
-dc_LDFLAGS = 
+DEFS = -DHAVE_CONFIG_H -I. -I$(srcdir) -I..
+CPPFLAGS = 
+LDFLAGS = 
+LIBS = 
+bc_OBJECTS =  main.o bc.o scan.o execute.o load.o storage.o util.o \
+global.o
+bc_LDADD = $(LDADD)
+bc_DEPENDENCIES =  ../lib/libbc.a
+bc_LDFLAGS = 
+LEX_OUTPUT_ROOT = lex.yy
+LEXLIB = 
 COMPILE = $(CC) $(DEFS) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
 CCLD = $(CC)
 LINK = $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(LDFLAGS) -o $@
 HEADERS =  $(noinst_HEADERS)
 
-DIST_COMMON =  Makefile.am Makefile.in
+DIST_COMMON =  Makefile.am Makefile.in bc.c scan.c
 
 
 DISTFILES = $(DIST_COMMON) $(SOURCES) $(HEADERS) $(TEXINFOS) $(EXTRA_DIST)
 
 TAR = tar
 GZIP_ENV = --best
-SOURCES = $(dc_SOURCES)
-OBJECTS = $(dc_OBJECTS)
+SOURCES = $(bc_SOURCES)
+OBJECTS = $(bc_OBJECTS)
 
 all: all-redirect
 .SUFFIXES:
-.SUFFIXES: .S .c .o .s
+.SUFFIXES: .S .c .l .o .s .y
 $(srcdir)/Makefile.in: Makefile.am $(top_srcdir)/configure.in $(ACLOCAL_M4) 
-	cd $(top_srcdir) && $(AUTOMAKE) --gnu --include-deps dc/Makefile
+	cd $(top_srcdir) && $(AUTOMAKE) --gnu --include-deps bc/Makefile
 
 Makefile: $(srcdir)/Makefile.in  $(top_builddir)/config.status
 	cd $(top_builddir) \
@@ -161,9 +177,18 @@ distclean-compile:
 
 maintainer-clean-compile:
 
-dc: $(dc_OBJECTS) $(dc_DEPENDENCIES)
-	@rm -f dc
-	$(LINK) $(dc_LDFLAGS) $(dc_OBJECTS) $(dc_LDADD) $(LIBS)
+bc: $(bc_OBJECTS) $(bc_DEPENDENCIES)
+	@rm -f bc
+	$(LINK) $(bc_LDFLAGS) $(bc_OBJECTS) $(bc_LDADD) $(LIBS)
+.l.c:
+	$(LEX) $(AM_LFLAGS) $(LFLAGS) $< && mv $(LEX_OUTPUT_ROOT).c $@
+.y.c:
+	$(YACC) $(AM_YFLAGS) $(YFLAGS) $< && mv y.tab.c $*.c
+	if test -f y.tab.h; then \
+	if cmp -s y.tab.h $*.h; then rm -f y.tab.h; else mv y.tab.h $*.h; fi; \
+	else :; fi
+bc.h: bc.c
+
 
 tags: TAGS
 
@@ -196,7 +221,7 @@ maintainer-clean-tags:
 
 distdir = $(top_builddir)/$(PACKAGE)-$(VERSION)/$(subdir)
 
-subdir = dc
+subdir = bc
 
 distdir: $(DISTFILES)
 	@for file in $(DISTFILES); do \
@@ -209,13 +234,21 @@ distdir: $(DISTFILES)
 	    || cp -p $$d/$$file $(distdir)/$$file || :; \
 	  fi; \
 	done
-array.o: array.c ../config.h dc.h dc-proto.h dc-regdef.h
-dc.o: dc.c ../config.h ../h/getopt.h dc.h dc-proto.h
-eval.o: eval.c ../config.h dc.h dc-proto.h
-misc.o: misc.c ../config.h ../h/getopt.h dc.h dc-proto.h
-numeric.o: numeric.c ../config.h ../h/number.h dc.h dc-proto.h
-stack.o: stack.c ../config.h dc.h dc-proto.h dc-regdef.h
-string.o: string.c ../config.h dc.h dc-proto.h
+bc.o: bc.c bcdefs.h ../config.h const.h ../h/number.h global.h proto.h
+execute.o: execute.c bcdefs.h ../config.h const.h ../h/number.h global.h \
+	proto.h
+global.o: global.c bcdefs.h ../config.h const.h ../h/number.h global.h \
+	libmath.h
+load.o: load.c bcdefs.h ../config.h const.h ../h/number.h global.h \
+	proto.h
+main.o: main.c bcdefs.h ../config.h const.h ../h/number.h global.h \
+	proto.h ../h/getopt.h
+scan.o: scan.c bcdefs.h ../config.h const.h ../h/number.h bc.h global.h \
+	proto.h
+storage.o: storage.c bcdefs.h ../config.h const.h ../h/number.h global.h \
+	proto.h
+util.o: util.c bcdefs.h ../config.h const.h ../h/number.h global.h \
+	proto.h
 
 info-am:
 info: info-am
@@ -251,9 +284,10 @@ clean-generic:
 distclean-generic:
 	-rm -f Makefile $(CONFIG_CLEAN_FILES)
 	-rm -f config.cache config.log stamp-h stamp-h[0-9]*
+	-test -z "$(DISTCLEANFILES)" || rm -f $(DISTCLEANFILES)
 
 maintainer-clean-generic:
-	-test -z "$(MAINTAINERCLEANFILES)" || rm -f $(MAINTAINERCLEANFILES)
+	-test -z "scanlbchbcc$(MAINTAINERCLEANFILES)" || rm -f scanl bch bcc $(MAINTAINERCLEANFILES)
 mostlyclean-am:  mostlyclean-binPROGRAMS mostlyclean-compile \
 		mostlyclean-tags mostlyclean-generic
 
@@ -289,7 +323,22 @@ distclean-generic clean-generic maintainer-clean-generic clean \
 mostlyclean distclean maintainer-clean
 
 
-$(PROGRAMS): $(LDADD)
+$(PROGRAMS): $(LIBBC)
+
+scan.o: bc.h
+global.o: libmath.h
+
+libmath.h: libmath.b
+	echo '{0}' > libmath.h
+	$(MAKE) fbc
+	./fbc -c $(srcdir)/libmath.b </dev/null >libmath.h
+	$(srcdir)/fix-libmath_h
+	rm -f ./fbc
+fbc: $(fbcOBJ)
+	$(LINK) $(fbcOBJ) $(LIBBC) $(LIBL) $(READLINELIB) $(LIBS)
+sbc.o: sbc.c
+sbc: $(sbcOBJ)
+	$(LINK) $(sbcOBJ) $(LIBBC) $(LIBL) $(READLINELIB) $(LIBS)
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

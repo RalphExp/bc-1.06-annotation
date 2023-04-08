@@ -1,12 +1,11 @@
-/*
+/* 
  * evaluate the dc language, from a FILE* or a string
  *
- * Copyright (C) 1994, 1997, 1998, 2000, 2003, 2005, 2006, 2008, 2010, 2012-2017
- * Free Software Foundation, Inc.
+ * Copyright (C) 1994, 1997, 1998, 2000 Free Software Foundation, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3, or (at your option)
+ * the Free Software Foundation; either version 2, or (at your option)
  * any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -15,8 +14,11 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * along with this program; if not, you can either send email to this
+ * program's author (see below) or write to:
+ *   The Free Software Foundation, Inc.
+ *   59 Temple Place, Suite 330
+ *   Boston, MA 02111 USA
  */
 
 /* This is the only module which knows about the dc input language */
@@ -35,10 +37,6 @@
 #  endif
 #endif
 #endif
-#include <signal.h>
-#ifdef HAVE_UNISTD_H
-# include <unistd.h>
-#endif
 #include "dc.h"
 #include "dc-proto.h"
 
@@ -47,9 +45,11 @@ typedef enum {DC_FALSE, DC_TRUE} dc_boolean;
 typedef enum {
 	DC_OKAY = DC_SUCCESS, /* no further intervention needed for this command */
 	DC_EATONE,		/* caller needs to eat the lookahead char */
-	DC_EVALREG,		/* caller needs to eval the string named by `peekc' */
-	DC_EVALTOS,		/* caller needs to eval the string on top of the stack */
 	DC_QUIT,		/* quit out of unwind_depth levels of evaluation */
+
+	/* with the following return values, the caller does not have to 
+	 * fret about stdin_lookahead's value
+	 */
 	DC_INT,			/* caller needs to parse a dc_num from input stream */
 	DC_STR,			/* caller needs to parse a dc_str from input stream */
 	DC_SYSTEM,		/* caller needs to run a system() on next input line */
@@ -66,9 +66,6 @@ static int dc_scale=0;		/* scale (see user documentaton) */
 /* for Quitting evaluations */
 static int unwind_depth=0;
 
-/* for handling SIGINT properly */
-static volatile sig_atomic_t interrupt_seen=0;
-
 /* if true, active Quit will not exit program */
 static dc_boolean unwind_noexit=DC_FALSE;
 
@@ -77,9 +74,6 @@ static dc_boolean unwind_noexit=DC_FALSE;
  * If set to EOF then lookahead is used up.
  */
 static int stdin_lookahead=EOF;
-
-/* forward reference */
-static int evalstr(dc_data *string);
 
 
 /* input_fil and input_str are passed as arguments to dc_getnum */
@@ -97,65 +91,39 @@ static int input_pushback;
 static int
 input_fil DC_DECLVOID()
 {
-		int c;
 	if (input_pushback != EOF){
-		c = input_pushback;
+		int c = input_pushback;
 		input_pushback = EOF;
 		return c;
 	}
-	c = getc(input_fil_fp);
-	checkferror_input(input_fil_fp);
-	return c;
+	return getc(input_fil_fp);
 }
 
 /* passed as an argument to dc_getnum */
 static int
 input_str DC_DECLVOID()
 {
-	if (*input_str_string == '\0')
+	if (!*input_str_string)
 		return EOF;
-	return *(const unsigned char *)input_str_string++;
+	return *input_str_string++;
 }
 
 
 
 /* takes a string and evals it; frees the string when done */
-/* Wrapper around evalstr to avoid duplicating the free call
+/* Wrapper around dc_evalstr to avoid duplicating the free call
  * at all possible return points.
  */
 static int
 dc_eval_and_free_str DC_DECLARG((string))
-	dc_data *string DC_DECLEND
+	dc_data string DC_DECLEND
 {
 	dc_status status;
 
-	status = evalstr(string);
-	if (string->dc_type == DC_STRING)
-		dc_free_str(&string->v.string);
+	status = dc_evalstr(string);
+	if (string.dc_type == DC_STRING)
+		dc_free_str(&string.v.string);
 	return status;
-}
-
-
-/* notice when an interrupt event happens */
-static void
-dc_trap_interrupt DC_DECLARG((signo))
-	int signo DC_DECLEND
-{
-	signal(signo, dc_trap_interrupt);
-	interrupt_seen = 1;
-}
-
-
-/* step pointer past next end-of-line (or to end-of-string) */
-static const char *
-skip_past_eol DC_DECLARG((strptr, strend))
-	const char *strptr DC_DECLSEP
-	const char *strend DC_DECLEND
-{
-	const char *p = memchr(strptr, '\n', (size_t)(strend-strptr));
-	if (p != NULL)
-		return p+1;
-	return strend;
 }
 
 
@@ -172,6 +140,11 @@ dc_func DC_DECLARG((c, peekc, negcmp))
 	int peekc DC_DECLSEP
 	int negcmp DC_DECLEND
 {
+	/* we occasionally need these for temporary data */
+	/* Despite the GNU coding standards, it is much easier
+	 * to have these declared once here, since this function
+	 * is just one big switch statement.
+	 */
 	dc_data datum;
 	int tmpint;
 
@@ -233,8 +206,10 @@ dc_func DC_DECLARG((c, peekc, negcmp))
 		 */
 		if (peekc == EOF)
 			return DC_EOF_ERROR;
-		if ( (dc_cmpop() <  0) == (negcmp==0) )
-			return DC_EVALREG;
+		if ( (dc_cmpop() <  0) == !negcmp )
+			if (dc_register_get(peekc, &datum) == DC_SUCCESS)
+				if (dc_eval_and_free_str(datum) == DC_QUIT)
+					return DC_QUIT;
 		return DC_EATONE;
 	case '=':
 		/* eval register named by peekc if
@@ -242,8 +217,10 @@ dc_func DC_DECLARG((c, peekc, negcmp))
 		 */
 		if (peekc == EOF)
 			return DC_EOF_ERROR;
-		if ( (dc_cmpop() == 0) == (negcmp==0) )
-			return DC_EVALREG;
+		if ( (dc_cmpop() == 0) == !negcmp )
+			if (dc_register_get(peekc, &datum) == DC_SUCCESS)
+				if (dc_eval_and_free_str(datum) == DC_QUIT)
+					return DC_QUIT;
 		return DC_EATONE;
 	case '>':
 		/* eval register named by peekc if
@@ -251,19 +228,19 @@ dc_func DC_DECLARG((c, peekc, negcmp))
 		 */
 		if (peekc == EOF)
 			return DC_EOF_ERROR;
-		if ( (dc_cmpop() >  0) == (negcmp==0) )
-			return DC_EVALREG;
+		if ( (dc_cmpop() >  0) == !negcmp )
+			if (dc_register_get(peekc, &datum) == DC_SUCCESS)
+				if (dc_eval_and_free_str(datum) == DC_QUIT)
+					return DC_QUIT;
 		return DC_EATONE;
 	case '?':	/* read a line from standard-input and eval it */
 		if (stdin_lookahead != EOF){
 			ungetc(stdin_lookahead, stdin);
 			stdin_lookahead = EOF;
 		}
-		datum = dc_readstring(stdin, '\n', '\n');
-		if (ferror(stdin))
-			return DC_EOF_ERROR;
-		dc_push(datum);
-		return DC_EVALTOS;
+		if (dc_eval_and_free_str(dc_readstring(stdin, '\n', '\n')) == DC_QUIT)
+			return DC_QUIT;
+		return DC_OKAY;
 	case '[':	/* read to balancing ']' into a dc_str */
 		return DC_STR;
 	case '!':	/* read to newline and call system() on resulting string */
@@ -302,15 +279,13 @@ dc_func DC_DECLARG((c, peekc, negcmp))
 			tmpint = 0;
 			if (datum.dc_type == DC_NUMBER)
 				tmpint = dc_num2int(datum.v.number, DC_TOSS);
-			if (2 <= tmpint  &&  tmpint <= DC_IBASE_MAX)
-				dc_ibase = tmpint;
-			else {
+			if ( ! (2 <= tmpint  &&  tmpint <= DC_IBASE_MAX) )
 				fprintf(stderr,
 						"%s: input base must be a number \
 between 2 and %d (inclusive)\n",
 						progname, DC_IBASE_MAX);
-				checkferror_output(stderr);
-			}
+			else
+				dc_ibase = tmpint;
 		}
 		break;
 	case 'k':	/* set scale to value on top of stack */
@@ -318,12 +293,11 @@ between 2 and %d (inclusive)\n",
 			tmpint = -1;
 			if (datum.dc_type == DC_NUMBER)
 				tmpint = dc_num2int(datum.v.number, DC_TOSS);
-			if ( ! (tmpint >= 0) ) {
+			if ( ! (tmpint >= 0) )
 				fprintf(stderr,
 						"%s: scale must be a nonnegative number\n",
 						progname);
-				checkferror_output(stderr);
-			} else
+			else
 				dc_scale = tmpint;
 		}
 		break;
@@ -347,12 +321,11 @@ between 2 and %d (inclusive)\n",
 			tmpint = 0;
 			if (datum.dc_type == DC_NUMBER)
 				tmpint = dc_num2int(datum.v.number, DC_TOSS);
-			if ( ! (tmpint > 1) ) {
+			if ( ! (tmpint > 1) )
 				fprintf(stderr,
 						"%s: output base must be a number greater than 1\n",
 						progname);
-				checkferror_output(stderr);
-			} else
+			else
 				dc_obase = tmpint;
 		}
 		break;
@@ -366,8 +339,16 @@ between 2 and %d (inclusive)\n",
 		unwind_depth = 1; /* the return below is the first level of returns */
 		unwind_noexit = DC_FALSE;
 		return DC_QUIT;
-	case 'r':	/* rotate (swap) the top two elements on the stack */
-		dc_stack_rotate(2);
+	case 'r':	/* rotate (swap) the top two elements on the stack
+				 */
+		if (dc_pop(&datum) == DC_SUCCESS) {
+			dc_data datum2;
+			int two_status;
+			two_status = dc_pop(&datum2);
+			dc_push(datum);
+			if (two_status == DC_SUCCESS)
+				dc_push(datum2);
+		}
 		break;
 	case 's':	/* "store" -- replace top of register stack named
 				 * by peekc with the value popped from the top
@@ -385,7 +366,6 @@ between 2 and %d (inclusive)\n",
 				fprintf(stderr,
 						"%s: square root of nonnumeric attempted\n",
 						progname);
-				checkferror_output(stderr);
 			}else if (dc_sqrt(datum.v.number, dc_scale, &tmpnum) == DC_SUCCESS){
 				dc_free_num(&datum.v.number);
 				datum.v.number = tmpnum;
@@ -394,7 +374,17 @@ between 2 and %d (inclusive)\n",
 		}
 		break;
 	case 'x':	/* eval the datum popped from top of stack */
-		return DC_EVALTOS;
+		if (dc_pop(&datum) == DC_SUCCESS){
+			if (datum.dc_type == DC_STRING){
+				if (dc_eval_and_free_str(datum) == DC_QUIT)
+					return DC_QUIT;
+			}else if (datum.dc_type == DC_NUMBER){
+				dc_push(datum);
+			}else{
+				dc_garbage("at top of stack", -1);
+			}
+		}
+		break;
 	case 'z':	/* push the current stack depth onto the top of stack */
 		dc_push(dc_int2data(dc_tell_stackdepth()));
 		break;
@@ -427,12 +417,10 @@ between 2 and %d (inclusive)\n",
 			if (datum.dc_type == DC_NUMBER)
 				dc_dump_num(datum.v.number, DC_TOSS);
 			else if (datum.dc_type == DC_STRING)
-				dc_out_str(datum.v.string, DC_TOSS);
+				dc_out_str(datum.v.string, DC_NONL, DC_TOSS);
 			else
 				dc_garbage("at top of stack", -1);
 		}
-		fflush(stdout);
-		checkferror_output(stdout);
 		break;
 	case 'Q':	/* quit out of top-of-stack nested evals;
 				 * pops value from stack;
@@ -449,11 +437,12 @@ between 2 and %d (inclusive)\n",
 			fprintf(stderr,
 					"%s: Q command requires a number >= 1\n",
 					progname);
-			checkferror_output(stderr);
 		}
 		break;
+#if 0
 	case 'R':	/* pop a value off of the evaluation stack,;
-				 * rotate the top remaining stack elements that many
+				 * rotate the top
+				 remaining stack elements that many
 				 * places forward (negative numbers mean rotate
 				 * backward).
 				 */
@@ -464,6 +453,7 @@ between 2 and %d (inclusive)\n",
 			dc_stack_rotate(tmpint);
 		}
 		break;
+#endif
 	case 'S':	/* pop a value off of the evaluation stack
 				 * and push it onto the register stack named by peekc
 				 */
@@ -493,12 +483,11 @@ between 2 and %d (inclusive)\n",
 			if (datum.dc_type == DC_NUMBER)
 				tmpint = dc_num2int(datum.v.number, DC_TOSS);
 			if (dc_pop(&datum) == DC_SUCCESS){
-				if (tmpint < 0) {
+				if (tmpint < 0)
 					fprintf(stderr,
 							"%s: array index must be a nonnegative integer\n",
 							progname);
-					checkferror_output(stderr);
-				} else
+				else
 					dc_array_set(peekc, tmpint, datum);
 			}
 		}
@@ -510,21 +499,18 @@ between 2 and %d (inclusive)\n",
 			tmpint = -1;
 			if (datum.dc_type == DC_NUMBER)
 				tmpint = dc_num2int(datum.v.number, DC_TOSS);
-			if (tmpint < 0) {
+			if (tmpint < 0)
 				fprintf(stderr,
 						"%s: array index must be a nonnegative integer\n",
 						progname);
-				checkferror_output(stderr);
-			} else
+			else
 				dc_push(dc_array_get(peekc, tmpint));
 		}
 		return DC_EATONE;
 
 	default:	/* What did that user mean? */
 		fprintf(stderr, "%s: ", progname);
-		checkferror_output(stderr);
 		dc_show_id(stdout, c, " unimplemented\n");
-		checkferror_output(stdout);
 		break;
 	}
 	return DC_OKAY;
@@ -532,9 +518,9 @@ between 2 and %d (inclusive)\n",
 
 
 /* takes a string and evals it */
-static int
-evalstr DC_DECLARG((string))
-	dc_data *string DC_DECLEND
+int
+dc_evalstr DC_DECLARG((string))
+	dc_data string DC_DECLEND
 {
 	const char *s;
 	const char *end;
@@ -545,20 +531,16 @@ evalstr DC_DECLARG((string))
 	int count;
 	int negcmp;
 	int next_negcmp = 0;
-	int tail_depth = 1; /* how much tail recursion is active */
-	dc_data evalstr;
 
-	if (string->dc_type != DC_STRING){
+	if (string.dc_type != DC_STRING){
 		fprintf(stderr,
 				"%s: eval called with non-string argument\n",
 				progname);
-		checkferror_output(stderr);
 		return DC_OKAY;
 	}
-	interrupt_seen = 0;
-	s = dc_str2charp(string->v.string);
-	end = s + dc_strlen(string->v.string);
-	while (s < end && interrupt_seen==0){
+	s = dc_str2charp(string.v.string);
+	end = s + dc_strlen(string.v.string);
+	while (s < end){
 		c = *(const unsigned char *)s++;
 		peekc = EOF;
 		if (s < end)
@@ -572,48 +554,12 @@ evalstr DC_DECLARG((string))
 			if (peekc != EOF)
 				++s;
 			break;
-		case DC_EVALREG:
-			/*commands which return this guarantee that peekc!=EOF*/
-			++s;
-			if (dc_register_get(peekc, &evalstr) != DC_SUCCESS)
-				break;
-			dc_push(evalstr);
-			/*@fallthrough@*/
-		case DC_EVALTOS:
-			/*skip trailing whitespace to assist tail-recursion detection*/
-			while (s<end && (*s==' '||*s=='\t'||*s=='\n'||*s=='#')){
-				if (*s++ == '#')
-					s = skip_past_eol(s, end);
-			}
-			if (dc_pop(&evalstr) == DC_SUCCESS){
-				if (evalstr.dc_type == DC_NUMBER){
-					dc_push(evalstr);
-				}else if (evalstr.dc_type != DC_STRING){
-					dc_garbage("at top of stack", -1);
-				}else if (s == end){
-					/*handle tail recursion*/
-					dc_free_str(&string->v.string);
-					*string = evalstr;
-					s = dc_str2charp(string->v.string);
-					end = s + dc_strlen(string->v.string);
-					++tail_depth;
-				}else if (dc_eval_and_free_str(&evalstr) == DC_QUIT){
-					if (unwind_depth > 0){
-						--unwind_depth;
-						return DC_QUIT;
-					}
-					return DC_OKAY;
-				}
-			}
-			break;
 		case DC_QUIT:
-			if (unwind_depth >= tail_depth){
-				unwind_depth -= tail_depth;
+			if (unwind_depth > 0){
+				--unwind_depth;
 				return DC_QUIT;
 			}
-			/*adjust tail recursion accounting and continue*/
-			tail_depth -= unwind_depth;
-			break;
+			return DC_OKAY;
 
 		case DC_INT:
 			input_str_string = s - 1;
@@ -629,50 +575,30 @@ evalstr DC_DECLARG((string))
 					--count;
 				else if (*p == '[')
 					++count;
-			len = (size_t) (p - s);
-			dc_push(dc_makestring(s, (count==0 ? len-1 : len)));
+			len = p - s;
+			dc_push(dc_makestring(s, len-1));
 			s = p;
 			break;
 		case DC_SYSTEM:
 			s = dc_system(s);
-			break;
 		case DC_COMMENT:
-			s = skip_past_eol(s, end);
+			s = memchr(s, '\n', (size_t)(end-s));
+			if (!s)
+				s = end;
+			else
+				++s;
 			break;
 		case DC_NEGCMP:
 			next_negcmp = 1;
 			break;
 
 		case DC_EOF_ERROR:
-			if (ferror(stdin)) {
-				fprintf(stderr, "%s: ", progname);
-				perror("error reading stdin");
-				return DC_FAIL;
-			}
 			fprintf(stderr, "%s: unexpected EOS\n", progname);
-			checkferror_output(stderr);
 			return DC_OKAY;
 		}
 	}
 	return DC_OKAY;
 }
-
-/* wrapper around evalstr, to handle top-level QUIT requests correctly*/
-int
-dc_evalstr(dc_data *string)
-{
-   switch (evalstr(string)) {
-   case DC_OKAY:
-	   return DC_SUCCESS;
-   case DC_QUIT:
-	   if (unwind_noexit != DC_TRUE)
-		   return DC_FAIL;
-	   return DC_SUCCESS;
-   default:
-	   return DC_FAIL;
-   }
-}
-
 
 
 /* This is the main function of the whole DC program.
@@ -687,104 +613,35 @@ dc_evalfile DC_DECLARG((fp))
 	int peekc;
 	int negcmp;
 	int next_negcmp = 0;
-	typedef void (*handler_t)(int);
-	handler_t sigint_handler = dc_trap_interrupt;
-	handler_t sigint_default = signal(SIGINT, SIG_IGN);
 	dc_data datum;
-
-	/* Signals are awkward: we want to allow interactive users
-	 * to break out of long running macros, but otherwise we
-	 * prefer that SIGINT not be given any special treatment.
-	 * Sometimes "no special treatment" means to continue to
-	 * *ignore* the signal, but usually it means to kill the program.
-	 */
-	signal(SIGINT, sigint_default);
-#ifdef HAVE_UNISTD_H
-	/* don't trap SIGINT if we can tell that we are not reading from a tty */
-	if ( ! isatty(fileno(fp)) )
-		sigint_handler = sigint_default;
-#endif
 
 	stdin_lookahead = EOF;
 	for (c=getc(fp); c!=EOF; c=peekc){
 		peekc = getc(fp);
-		checkferror_input(stdin);
 		/*
 		 * The following if() is the only place where ``stdin_lookahead''
 		 * might be set to other than EOF:
 		 */
 		if (fp == stdin)
 			stdin_lookahead = peekc;
-		/*
-		 * In the switch(), cases which naturally update peekc
-		 * (unconditionally) do not have to update or reference
-		 * stdin_lookahead; other functions use the predicate:
-		 *    stdin_lookahead != peekc  &&  fp == stdin
-		 * to recognize the case where:
-		 *   a) stdin_lookahead == EOF (stdin and peekc are not in sync)
-		 *   b) peekc != EOF (resync is possible)
-		 *   c) fp == stdin (resync is relevant)
-		 * The whole stdin_lookahead complication arises because the
-		 * '?' command may be invoked from an arbritrarily deeply
-		 * nested dc_evalstr(), '?' reads exclusively from stdin,
-		 * and this winds up making peekc invalid when fp==stdin.
-		 */
 		negcmp = next_negcmp;
 		next_negcmp = 0;
-		signal(SIGINT, sigint_handler);
 		switch (dc_func(c, peekc, negcmp)){
 		case DC_OKAY:
-			if (stdin_lookahead != peekc  &&  fp == stdin) {
+			if (stdin_lookahead != peekc  &&  fp == stdin)
 				peekc = getc(fp);
-				checkferror_input(stdin);
-			}
 			break;
 		case DC_EATONE:
 			peekc = getc(fp);
-			checkferror_input(fp);
-			break;
-		case DC_EVALREG:
-			/*commands which send us here shall guarantee that peekc!=EOF*/
-			c = peekc;
-			peekc = getc(fp);
-			checkferror_input(fp);
-			stdin_lookahead = peekc;
-			if (dc_register_get(c, &datum) != DC_SUCCESS)
-				break;
-			dc_push(datum);
-			/*@fallthrough@*/
-		case DC_EVALTOS:
-			if (stdin_lookahead != peekc  &&  fp == stdin) {
-				peekc = getc(fp);
-				checkferror_input(stdin);
-			}
-			if (dc_pop(&datum) == DC_SUCCESS){
-				if (datum.dc_type == DC_NUMBER){
-					dc_push(datum);
-				}else if (datum.dc_type == DC_STRING){
-					if (dc_eval_and_free_str(&datum) == DC_QUIT){
-						if (unwind_noexit != DC_TRUE)
-							goto reset_and_exit_quit;
-						fprintf(stderr, "%s: Q command argument exceeded \
-string execution depth\n", progname);
-						checkferror_output(stderr);
-					}
-				}else{
-					dc_garbage("at top of stack", -1);
-				}
-			}
 			break;
 		case DC_QUIT:
 			if (unwind_noexit != DC_TRUE)
-				goto reset_and_exit_quit;
+				return DC_SUCCESS;
 			fprintf(stderr,
 					"%s: Q command argument exceeded string execution depth\n",
 					progname);
-			checkferror_output(stderr);
-			if (stdin_lookahead != peekc  &&  fp == stdin) {
+			if (stdin_lookahead != peekc  &&  fp == stdin)
 				peekc = getc(fp);
-				checkferror_input(stdin);
-			}
 			break;
 
 		case DC_INT:
@@ -792,22 +649,16 @@ string execution depth\n", progname);
 			input_pushback = c;
 			ungetc(peekc, fp);
 			dc_push(dc_getnum(input_fil, dc_ibase, &peekc));
-			if (ferror(fp))
-				goto error_fail;
 			break;
 		case DC_STR:
 			ungetc(peekc, fp);
 			datum = dc_readstring(fp, '[', ']');
-			if (ferror(fp))
-				goto error_fail;
 			dc_push(datum);
 			peekc = getc(fp);
 			break;
 		case DC_SYSTEM:
 			ungetc(peekc, fp);
-			datum = dc_readstring(fp, '\n', '\n');
-			if (ferror(fp))
-				goto error_fail;
+			datum = dc_readstring(stdin, '\n', '\n');
 			(void)dc_system(dc_str2charp(datum.v.string));
 			dc_free_str(&datum.v.string);
 			peekc = getc(fp);
@@ -823,38 +674,9 @@ string execution depth\n", progname);
 			break;
 
 		case DC_EOF_ERROR:
-			if (ferror(fp))
-				goto error_fail;
 			fprintf(stderr, "%s: unexpected EOF\n", progname);
-			goto reset_and_exit_fail;
+			return DC_FAIL;
 		}
-
-		if (interrupt_seen)
-			fprintf(stderr, "\nInterrupt!\n");
-		interrupt_seen = 0;
-		signal(SIGINT, sigint_default);
 	}
-	if (!ferror(fp))
-		goto reset_and_exit_success;
-
-error_fail:
-	fprintf(stderr, "%s: ", progname);
-	perror("error reading input");
-	return DC_FAIL;
-reset_and_exit_quit:
-reset_and_exit_fail:
-	signal(SIGINT, sigint_default);
-	return DC_FAIL;
-reset_and_exit_success:
-	signal(SIGINT, sigint_default);
 	return DC_SUCCESS;
 }
-
-
-/*
- * Local Variables:
- * mode: C
- * tab-width: 4
- * End:
- * vi: set ts=4 :
- */

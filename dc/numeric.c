@@ -1,12 +1,11 @@
 /* 
  * interface dc to the bc numeric routines
  *
- * Copyright (C) 1994, 1997, 1998, 2000, 2005, 2008, 2013, 2017
- * Free Software Foundation, Inc.
+ * Copyright (C) 1994, 1997, 1998, 2000 Free Software Foundation, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 3, or (at your option)
+ * the Free Software Foundation; either version 2, or (at your option)
  * any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -15,8 +14,11 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * along with this program; if not, you can either send email to this
+ * program's author (see below) or write to:
+ *   The Free Software Foundation, Inc.
+ *   59 Temple Place, Suite 330
+ *   Boston, MA 02111 USA
  */
 
 /* This should be the only module that knows the internals of type dc_num */
@@ -24,31 +26,16 @@
  * make use of bc's numeric routines.
  */
 
-/* make all the header files see that these are really the same thing;
- * this is acceptable because everywhere else dc_number is just referenced
- * as a pointer-to-incomplete-structure type
- */
-#define dc_number bc_struct
-
 #include "config.h"
 
 #include <stdio.h>
 #include <ctype.h>
 #ifdef HAVE_LIMITS_H
 # include <limits.h>
-#endif
-#ifndef UCHAR_MAX
+#else
 # define UCHAR_MAX ((unsigned char)~0)
 #endif
-#ifdef HAVE_STDLIB_H
-# include <stdlib.h>
-#endif
-#ifdef HAVE_ERRNO_H
-# include <errno.h>
-#else
-  extern int errno;
-#endif
-
+#include <stdlib.h>
 #include "number.h"
 #include "dc.h"
 #include "dc-proto.h"
@@ -69,11 +56,7 @@ static void out_char (int);
 int std_only = FALSE;
 
 /* convert an opaque dc_num into a real bc_num */
-/* by a freak accident, these are now no-op mappings,
- * but leave the notation here in case that changes later
- * */
-#define CastNum(x)		(x)
-#define CastNumPtr(x)	(x)
+#define CastNum(x)	((bc_num)(x))
 
 /* add two dc_nums, place into *result;
  * return DC_SUCCESS on success, DC_DOMAIN_ERROR on domain error
@@ -85,8 +68,8 @@ dc_add DC_DECLARG((a, b, kscale, result))
 	int kscale ATTRIB((unused)) DC_DECLSEP
 	dc_num *result DC_DECLEND
 {
-	bc_init_num(CastNumPtr(result));
-	bc_add(CastNum(a), CastNum(b), CastNumPtr(result), 0);
+	bc_init_num((bc_num *)result);
+	bc_add(CastNum(a), CastNum(b), (bc_num *)result, 0);
 	return DC_SUCCESS;
 }
 
@@ -100,8 +83,8 @@ dc_sub DC_DECLARG((a, b, kscale, result))
 	int kscale ATTRIB((unused)) DC_DECLSEP
 	dc_num *result DC_DECLEND
 {
-	bc_init_num(CastNumPtr(result));
-	bc_sub(CastNum(a), CastNum(b), CastNumPtr(result), 0);
+	bc_init_num((bc_num *)result);
+	bc_sub(CastNum(a), CastNum(b), (bc_num *)result, 0);
 	return DC_SUCCESS;
 }
 
@@ -115,8 +98,8 @@ dc_mul DC_DECLARG((a, b, kscale, result))
 	int kscale DC_DECLSEP
 	dc_num *result DC_DECLEND
 {
-	bc_init_num(CastNumPtr(result));
-	bc_multiply(CastNum(a), CastNum(b), CastNumPtr(result), kscale);
+	bc_init_num((bc_num *)result);
+	bc_multiply(CastNum(a), CastNum(b), (bc_num *)result, kscale);
 	return DC_SUCCESS;
 }
 
@@ -130,10 +113,9 @@ dc_div DC_DECLARG((a, b, kscale, result))
 	int kscale DC_DECLSEP
 	dc_num *result DC_DECLEND
 {
-	bc_init_num(CastNumPtr(result));
-	if (bc_divide(CastNum(a), CastNum(b), CastNumPtr(result), kscale)){
+	bc_init_num((bc_num *)result);
+	if (bc_divide(CastNum(a), CastNum(b), (bc_num *)result, kscale)){
 		fprintf(stderr, "%s: divide by zero\n", progname);
-		checkferror_output(stderr);
 		return DC_DOMAIN_ERROR;
 	}
 	return DC_SUCCESS;
@@ -151,12 +133,11 @@ dc_divrem DC_DECLARG((a, b, kscale, quotient, remainder))
 	dc_num *quotient DC_DECLSEP
 	dc_num *remainder DC_DECLEND
 {
-	bc_init_num(CastNumPtr(quotient));
-	bc_init_num(CastNumPtr(remainder));
+	bc_init_num((bc_num *)quotient);
+	bc_init_num((bc_num *)remainder);
 	if (bc_divmod(CastNum(a), CastNum(b),
-						CastNumPtr(quotient), CastNumPtr(remainder), kscale)){
+						(bc_num *)quotient, (bc_num *)remainder, kscale)){
 		fprintf(stderr, "%s: divide by zero\n", progname);
-		checkferror_output(stderr);
 		return DC_DOMAIN_ERROR;
 	}
 	return DC_SUCCESS;
@@ -172,10 +153,9 @@ dc_rem DC_DECLARG((a, b, kscale, result))
 	int kscale DC_DECLSEP
 	dc_num *result DC_DECLEND
 {
-	bc_init_num(CastNumPtr(result));
-	if (bc_modulo(CastNum(a), CastNum(b), CastNumPtr(result), kscale)){
+	bc_init_num((bc_num *)result);
+	if (bc_modulo(CastNum(a), CastNum(b), (bc_num *)result, kscale)){
 		fprintf(stderr, "%s: remainder by zero\n", progname);
-		checkferror_output(stderr);
 		return DC_DOMAIN_ERROR;
 	}
 	return DC_SUCCESS;
@@ -189,9 +169,9 @@ dc_modexp DC_DECLARG((base, expo, mod, kscale, result))
 	int kscale DC_DECLSEP
 	dc_num *result DC_DECLEND
 {
-	bc_init_num(CastNumPtr(result));
+	bc_init_num((bc_num *)result);
 	if (bc_raisemod(CastNum(base), CastNum(expo), CastNum(mod),
-					CastNumPtr(result), kscale)){
+					(bc_num *)result, kscale)){
 		if (bc_is_zero(CastNum(mod)))
 			fprintf(stderr, "%s: remainder by zero\n", progname);
 		return DC_DOMAIN_ERROR;
@@ -209,8 +189,8 @@ dc_exp DC_DECLARG((a, b, kscale, result))
 	int kscale DC_DECLSEP
 	dc_num *result DC_DECLEND
 {
-	bc_init_num(CastNumPtr(result));
-	bc_raise(CastNum(a), CastNum(b), CastNumPtr(result), kscale);
+	bc_init_num((bc_num *)result);
+	bc_raise(CastNum(a), CastNum(b), (bc_num *)result, kscale);
 	return DC_SUCCESS;
 }
 
@@ -228,11 +208,10 @@ dc_sqrt DC_DECLARG((value, kscale, result))
 	tmp = bc_copy_num(CastNum(value));
 	if (!bc_sqrt(&tmp, kscale)){
 		fprintf(stderr, "%s: square root of negative number\n", progname);
-		checkferror_output(stderr);
 		bc_free_num(&tmp);
 		return DC_DOMAIN_ERROR;
 	}
-	*(CastNumPtr(result)) = tmp;
+	*((bc_num *)result) = tmp;
 	return DC_SUCCESS;
 }
 
@@ -260,11 +239,6 @@ dc_num2int DC_DECLARG((value, discard_p))
 	long result;
 
 	result = bc_num2long(CastNum(value));
-	if (result == 0 && !bc_is_zero(CastNum(value))) {
-		fprintf(stderr, "%s: value overflows simple integer; punting...\n",
-				progname);
-		result = -1; /* more appropriate for dc's purposes */
-	}
 	if (discard_p == DC_TOSS)
 		dc_free_num(&value);
 	return (int)result;
@@ -280,9 +254,9 @@ dc_int2data DC_DECLARG((value))
 {
 	dc_data result;
 
-	bc_init_num(CastNumPtr(&result.v.number));
-	bc_int2num(CastNumPtr(&result.v.number), value);
-	result.dc_type = DC_NUMBER;
+	bc_init_num((bc_num *)&result.v.number);
+	bc_int2num((bc_num *)&result.v.number, value);
+ 	result.dc_type = DC_NUMBER;
 	return result;
 }
 
@@ -372,27 +346,21 @@ dc_getnum DC_DECLARG((input, ibase, readahead))
 	bc_free_num(&base);
 	if (readahead)
 		*readahead = c;
-	*CastNumPtr(&full_result.v.number) = result;
+	full_result.v.number = (dc_num)result;
 	full_result.dc_type = DC_NUMBER;
 	return full_result;
 }
 
 
-/* Return the "length" of the number, ignoring *all* leading zeros,
- * (including those to the right of the radix point!)
- */
+/* return the "length" of the number */
 int
 dc_numlen DC_DECLARG((value))
 	dc_num value DC_DECLEND
 {
-	/* XXX warning: unholy coziness with the internals of a bc_num! */
 	bc_num num = CastNum(value);
-	char *p = num->n_value;
-	int i = num->n_len + num->n_scale;
 
-	while (1<i && *p=='\0')
-		--i, ++p;
-	return i;
+	/* is this right??? */
+	return num->n_len + num->n_scale - (*num->n_value == '\0');
 }
 
 /* return the scale factor of the passed dc_num
@@ -420,16 +388,20 @@ dc_math_init DC_DECLVOID()
 }
 
 /* print out a dc_num in output base obase to stdout;
+ * if newline_p is DC_WITHNL, terminate output with a '\n';
  * if discard_p is DC_TOSS then deallocate the value after use
  */
 void
-dc_out_num DC_DECLARG((value, obase, discard_p))
+dc_out_num DC_DECLARG((value, obase, newline_p, discard_p))
 	dc_num value DC_DECLSEP
 	int obase DC_DECLSEP
+	dc_newline newline_p DC_DECLSEP
 	dc_discard discard_p DC_DECLEND
 {
 	out_char('\0'); /* clear the column counter */
 	bc_out_num(CastNum(value), obase, out_char, 0);
+	if (newline_p == DC_WITHNL)
+		putchar ('\n');
 	if (discard_p == DC_TOSS)
 		dc_free_num(&value);
 }
@@ -474,7 +446,6 @@ dc_dump_num DC_DECLARG((dcvalue, discard_p))
 
 	for (cur=top_of_stack; cur; cur=next) {
 		putchar(cur->digit);
-		checkferror_output(stdout);
 		next = cur->link;
 		free(cur);
 	}
@@ -489,7 +460,7 @@ void
 dc_free_num DC_DECLARG((value))
 	dc_num *value DC_DECLEND
 {
-	bc_free_num(CastNumPtr(value));
+	bc_free_num((bc_num *)value);
 }
 
 /* return a duplicate of the number in the passed value */
@@ -518,60 +489,18 @@ dc_dup_num DC_DECLARG((value))
 | The bulk of the code was just lifted straight out of the bc source.        |
 \---------------------------------------------------------------------------*/
 
+#ifdef HAVE_STDLIB_H
+# include <stdlib.h>
+#endif
+
 #ifdef HAVE_STDARG_H
 # include <stdarg.h>
 #else
 # include <varargs.h>
 #endif
 
-#ifndef HAVE_STRTOL
-/* Maintain some of the error checking of a real strtol() on
- * ancient systems that lack one, but punting on the niceties
- * of supporting bases other than 10 and overflow checking.
- */
-long
-strtol(const char *s, char **end, int base)
-{
-	int sign = 1;
-	long result = 0;
 
-	for (;; ++s) {
-		if (*s == '-')
-			sign = -sign;
-		else if (*s != '+' && !isspace(*(const unsigned char *)s))
-			break;
-	}
-	while (isdigit(*(const unsigned char *)s))
-		result = 10*result + (*s++ - '0');
-	*end = s;
-	return result * sign;
-}
-#endif /*!HAVE_STRTOL*/
-
-
-static int out_col = 0;
-static int line_max = -1;	/* negative means "need to check environment" */
-#define DEFAULT_LINE_MAX 70
-
-static void
-set_line_max_from_environment(void)
-{
-	const char *env_line_len = getenv("DC_LINE_LENGTH");
-	line_max = DEFAULT_LINE_MAX;
-	errno = 0;
-	if (env_line_len) {
-		char *endptr;
-		long proposed_line_len = strtol(env_line_len, &endptr, 0);
-		line_max = (int)proposed_line_len;
-
-		/* silently enforce sanity */
-		while (isspace(*(const unsigned char *)endptr))
-			++endptr;
-		if (*endptr || errno || line_max != proposed_line_len
-					|| line_max < 0 || line_max == 1)
-			line_max = DEFAULT_LINE_MAX;
-	}
-}
+int out_col = 0;
 
 /* Output routines: Write a character CH to the standard output.
    It keeps track of the number of characters output and may
@@ -579,22 +508,24 @@ set_line_max_from_environment(void)
 
 static void
 out_char (ch)
-	int ch;
+     int ch;
 {
-	if (ch == '\0') {
-		out_col = 0;
-	} else {
-		if (line_max < 0)
-			set_line_max_from_environment();
-		if (++out_col >= line_max && line_max != 0) {
-			putchar ('\\');
-			putchar ('\n');
-			out_col = 1;
-		}
-		putchar(ch);
-                checkferror_output(stdout);
-		checkferror_output(stderr);
+
+  if (ch == '\0')
+    {
+      out_col = 0;
+    }
+  else
+    {
+      out_col++;
+      if (out_col == 70)
+	{
+	  putchar ('\\');
+	  putchar ('\n');
+	  out_col = 1;
 	}
+      putchar (ch);
+    }
 }
 
 /* Malloc could not get enough memory. */
@@ -602,10 +533,10 @@ out_char (ch)
 void
 out_of_memory()
 {
-	dc_memfail();
+  dc_memfail();
 }
 
-/* Runtime error --- will print a message and stop the machine. */
+/* Runtime error will  print a message and stop the machine. */
 
 #ifdef HAVE_STDARG_H
 #ifdef __STDC__
@@ -614,26 +545,25 @@ rt_error (char *mesg, ...)
 #else
 void
 rt_error (mesg)
-	char *mesg;
+     char *mesg;
 #endif
 #else
 void
 rt_error (mesg, va_alist)
-	char *mesg;
+     char *mesg;
 #endif
 {
-	va_list args;
+  va_list args;
 
-	fprintf (stderr, "Runtime error: ");
+  fprintf (stderr, "Runtime error: ");
 #ifdef HAVE_STDARG_H
-	va_start (args, mesg);
+  va_start (args, mesg);
 #else
-	va_start (args);
+  va_start (args);
 #endif
-	vfprintf (stderr, mesg, args);
-	va_end (args);
-	fprintf (stderr, "\n");
-	checkferror_output(stderr);
+  vfprintf (stderr, mesg, args);
+  va_end (args);
+  fprintf (stderr, "\n");
 }
 
 
@@ -648,33 +578,23 @@ rt_warn (char *mesg, ...)
 #else
 void
 rt_warn (mesg)
-	char *mesg;
+     char *mesg;
 #endif
 #else
 void
 rt_warn (mesg, va_alist)
-	char *mesg;
+     char *mesg;
 #endif
 {
-	va_list args;
+  va_list args;
 
-	fprintf (stderr, "Runtime warning: ");
+  fprintf (stderr, "Runtime warning: ");
 #ifdef HAVE_STDARG_H
-	va_start (args, mesg);
+  va_start (args, mesg);
 #else
-	va_start (args);
+  va_start (args);
 #endif
-	vfprintf (stderr, mesg, args);
-	va_end (args);
-	fprintf (stderr, "\n");
-	checkferror_output(stderr);
+  vfprintf (stderr, mesg, args);
+  va_end (args);
+  fprintf (stderr, "\n");
 }
-
-
-/*
- * Local Variables:
- * mode: C
- * tab-width: 4
- * End:
- * vi: set ts=4 :
- */

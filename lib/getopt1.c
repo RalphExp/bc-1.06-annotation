@@ -1,32 +1,37 @@
 /* getopt_long and getopt_long_only entry points for GNU getopt.
+   Copyright (C) 1987, 88, 89, 90, 91, 92, 1993, 1994
+	Free Software Foundation, Inc.
 
-   Copyright (C) 1987, 1988, 1989, 1990, 1991, 1992, 1993, 1994, 1996,
-   1997, 1998, 2003 Free Software Foundation, Inc.
+This file is part of the GNU C Library.  Its master source is NOT part of
+the C library, however.  The master source lives in /gd/gnu/lib.
 
-   This file is part of the GNU C Library.
+The GNU C Library is free software; you can redistribute it and/or
+modify it under the terms of the GNU Library General Public License as
+published by the Free Software Foundation; either version 2 of the
+License, or (at your option) any later version.
 
-   This program is free software; you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by
-   the Free Software Foundation; either version 2, or (at your option)
-   any later version.
+The GNU C Library is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+Library General Public License for more details.
 
-   This program is distributed in the hope that it will be useful,
-   but WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-   GNU General Public License for more details.
-
-   You should have received a copy of the GNU General Public License along
-   with this program; if not, write to the Free Software Foundation,
-   Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301  USA.  */
+You should have received a copy of the GNU Library General Public
+License along with the GNU C Library; see the file COPYING.LIB.  If
+not, write to the Free Software Foundation, Inc., 675 Mass Ave,
+Cambridge, MA 02139, USA.  */
 
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 
-#ifdef _LIBC
-# include <getopt.h>
-#else
-# include "getopt.h"
+#include "getopt.h"
+
+#if !defined (__STDC__) || !__STDC__
+/* This is a separate conditional since some stdc systems
+   reject `defined (const)'.  */
+#ifndef const
+#define const
+#endif
 #endif
 
 #include <stdio.h>
@@ -39,21 +44,15 @@
    program understand `configure --with-gnu-libc' and omit the object files,
    it is simpler to just do this in the source for each such file.  */
 
-#define GETOPT_INTERFACE_VERSION 2
-#if !defined _LIBC && defined __GLIBC__ && __GLIBC__ >= 2
-#include <gnu-versions.h>
-#if _GNU_GETOPT_INTERFACE_VERSION == GETOPT_INTERFACE_VERSION
-#define ELIDE_CODE
-#endif
-#endif
-
-#ifndef ELIDE_CODE
+#if defined (_LIBC) || !defined (__GNU_LIBRARY__)
 
 
 /* This needs to come after some library #include
    to get __GNU_LIBRARY__ defined.  */
 #ifdef __GNU_LIBRARY__
 #include <stdlib.h>
+#else
+char *getenv ();
 #endif
 
 #ifndef	NULL
@@ -61,11 +60,12 @@
 #endif
 
 int
-getopt_long (int argc,
-	     char *const *argv,
-	     const char *options,
-	     const struct option *long_options,
-	     int *opt_index)
+getopt_long (argc, argv, options, long_options, opt_index)
+     int argc;
+     char *const *argv;
+     const char *options;
+     const struct option *long_options;
+     int *opt_index;
 {
   return _getopt_internal (argc, argv, options, long_options, opt_index, 0);
 }
@@ -76,28 +76,27 @@ getopt_long (int argc,
    instead.  */
 
 int
-getopt_long_only (int argc,
-		  char *const *argv,
-		  const char *options,
-		  const struct option *long_options,
-		  int *opt_index)
+getopt_long_only (argc, argv, options, long_options, opt_index)
+     int argc;
+     char *const *argv;
+     const char *options;
+     const struct option *long_options;
+     int *opt_index;
 {
   return _getopt_internal (argc, argv, options, long_options, opt_index, 1);
 }
 
-# ifdef _LIBC
-libc_hidden_def (getopt_long)
-libc_hidden_def (getopt_long_only)
-# endif
 
-#endif	/* Not ELIDE_CODE.  */
+#endif	/* _LIBC or not __GNU_LIBRARY__.  */
 
 #ifdef TEST
 
 #include <stdio.h>
 
 int
-main (int argc, char **argv)
+main (argc, argv)
+     int argc;
+     char **argv;
 {
   int c;
   int digit_optind = 0;
@@ -119,7 +118,7 @@ main (int argc, char **argv)
 
       c = getopt_long (argc, argv, "abc:d:0123456789",
 		       long_options, &option_index);
-      if (c == -1)
+      if (c == EOF)
 	break;
 
       switch (c)
