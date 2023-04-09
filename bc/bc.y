@@ -217,7 +217,7 @@ statement         : Warranty
                   if ($7 < 0) generate ("1"); /* if opt_expression is NULL, set TOS to 1. */
                   $7 = next_label++;
                   sprintf (genstr, "B%1d:J%1d:", $7, break_label); /* Test TOS if TOS != 0,
-				                                        jump to $7(content of the for block),
+                                                jump to $7(content of the for block),
                                                 otherwise jump to break_label, remove TOS. */
                   generate (genstr);
                   $<i_value>$ = continue_label; /* $<i_value>$ is the current block,
@@ -258,14 +258,14 @@ statement         : Warranty
                   $3 = if_label;                        /* save if_label to $3*/
                   if_label = next_label++;              /* allocate a new label for the if block */
                   sprintf (genstr, "Z%1d:", if_label);  /* test the TOS, if TOS == 0, jump to the
-				                                                   else block or the end of the if block,
-                                                           depends on whether the else block exists. */
+                                                          else block or the end of the if block,
+                                                          depends on whether the else block exists. */
                   generate (genstr);
                 }
               opt_newline statement  opt_else
                 {
                   sprintf (genstr, "N%1d:", if_label);  /* create the label point to the end of
-				                                                   if block. */
+                                                          if block. */
                   generate (genstr);
                   if_label = $3;                        /* restore if_label */
                 }
@@ -286,9 +286,10 @@ statement         : Warranty
                 }
             ')' opt_newline statement
                 {
-                  sprintf (genstr, "J%1d:N%1d:", $1, break_label); /* JUMP to the beginning of the while block,
-                                                                      also create a new label for the end of 
-                                                                      while block. */
+                  /* jump to the beginning of the while block,
+                    also create a new label for the end of 
+                    while block. */
+                  sprintf (genstr, "J%1d:N%1d:", $1, break_label); 
                   generate (genstr);
                   break_label = $4;
                 }
@@ -326,24 +327,30 @@ opt_else        : /* nothing */
                                                        if block. */
                 }
               opt_newline statement
+
 function         : Define NAME '(' opt_parameter_list ')' opt_newline
                    '{' required_eol opt_auto_define_list
                 {
                   /* Check auto list against parameter list? */
-                  check_params ($4,$9);
+                  check_params ($4,$9);               /* check if parameter names/auto variables names 
+                                                         are duplicated. */
                   sprintf (genstr, "F%d,%s.%s[",
-                       lookup($2,FUNCTDEF), 
-                       arg_str ($4), arg_str ($9));
+                       lookup($2,FUNCTDEF),           /* if function not exists, create a  new slot of *f_names*
+                                                        for the function name. */
+                       arg_str ($4), arg_str ($9));   /* make arg list in the reverse way, because the when the
+                                                        function is called, the parameters are pushed onto the
+                                                        stack from the right to left. */
                   generate (genstr);
                   free_args ($4);
                   free_args ($9);
-                  $1 = next_label;
-                  next_label = 1;
+                  $1 = next_label;                    /* save next label to $1, because function has its own
+                                                        label set. */
+                  next_label = 1;                     
                 }
               statement_list /* ENDOFLINE */ '}'
                 {
-                  generate ("0R]");
-                  next_label = $1;
+                  generate ("0R]");                   /* return instruction. */
+                  next_label = $1;                    /* restore next_label. */
                 }
             ;
 opt_parameter_list    : /* empty */ 

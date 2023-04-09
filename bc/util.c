@@ -78,8 +78,7 @@ static char *arglist1 = NULL, *arglist2 = NULL;
 
 _PROTOTYPE(static char *make_arg_str, (arg_list * args, int len));
 
-static char *make_arg_str(args, len) arg_list *args;
-int len;
+static char *make_arg_str(arg_list *args, int len)
 {
   char *temp;
   char sval[20];
@@ -107,7 +106,7 @@ int len;
   return (temp);
 }
 
-char *arg_str(args) arg_list *args;
+char *arg_str(arg_list *args)
 {
   if (arglist2 != NULL)
     free(arglist2);
@@ -116,7 +115,7 @@ char *arg_str(args) arg_list *args;
   return (arglist1);
 }
 
-char *call_str(args) arg_list *args;
+char *call_str(arg_list *args)
 {
   arg_list *temp;
   int arg_count;
@@ -139,7 +138,7 @@ char *call_str(args) arg_list *args;
 
 /* free_args frees an argument list ARGS. */
 
-void free_args(args) arg_list *args;
+void free_args(arg_list *args)
 {
   arg_list *temp;
 
@@ -155,7 +154,7 @@ void free_args(args) arg_list *args;
    There must be no duplicates any where.  Also, this is where
    warnings are generated for array parameters. */
 
-void check_params(params, autos) arg_list *params, *autos;
+void check_params(arg_list *params, arg_list *autos)
 {
   arg_list *tmp1, *tmp2;
 
@@ -224,7 +223,7 @@ void init_gen() {
 
 /* generate code STR for the machine. */
 
-void generate(str) char *str;
+void generate(char *str)
 {
   did_gen = TRUE;
   if (compile_only) {
@@ -262,7 +261,7 @@ void run_code() {
    It keeps track of the number of characters output and may
    break the output with a "\<cr>".  Always used for numbers. */
 
-void out_char(ch) int ch;
+void out_char(int ch)
 {
   if (ch == '\n') {
     out_col = 0;
