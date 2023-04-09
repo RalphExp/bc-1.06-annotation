@@ -40,7 +40,7 @@
 %union {
     char     *s_value;
     char      c_value;
-    int            i_value;
+    int       i_value;
     arg_list *a_value;
 }
 
@@ -163,7 +163,8 @@ statement         : Warranty
             | STRING
                 {
                   $$ = 0;
-                  generate ("w");  /* Write a string to the output. TODO: write a newline */
+                  generate ("w");  /* Write a string to the output */ 
+                                   /* TODO: write a newline?? */
                   generate ($1); /* ??? */
                   free ($1);
                 }
@@ -172,8 +173,8 @@ statement         : Warranty
                   if (break_label == 0)
                     yyerror ("Break outside a for/while");
                   else {
-                      sprintf (genstr, "J%1d:", break_label); /* unconditional jump */
-                      generate (genstr);
+                    sprintf (genstr, "J%1d:", break_label); /* unconditional jump */
+                    generate (genstr);
                   }
                 }
             | Continue
@@ -182,8 +183,8 @@ statement         : Warranty
                   if (continue_label == 0)
                     yyerror ("Continue outside a for");
                   else {
-                      sprintf (genstr, "J%1d:", continue_label); /* unconditional jump */
-                      generate (genstr);
+                    sprintf (genstr, "J%1d:", continue_label); /* unconditional jump */
+                    generate (genstr);
                   }
                 }
             | Quit
@@ -208,7 +209,7 @@ statement         : Warranty
                     generate ("p");
                   $4 = next_label++;
                   sprintf (genstr, "N%1d:", $4); /* create a new label here,
-                                                      before the second opt_expression */
+                                                    before the second opt_expression */
                   generate (genstr);
                 }
               opt_expression ';'
@@ -217,7 +218,7 @@ statement         : Warranty
                   $7 = next_label++;
                   sprintf (genstr, "B%1d:J%1d:", $7, break_label); /* Test TOS if TOS != 0,
 				                                        jump to $7(content of the for block),
-                                                        otherwise jump to break_label, remove TOS. */
+                                                otherwise jump to break_label, remove TOS. */
                   generate (genstr);
                   $<i_value>$ = continue_label; /* $<i_value>$ is the current block,
                                                   save the continue_label to $<i_value>$,
@@ -254,35 +255,40 @@ statement         : Warranty
                 }
             | If '(' expression ')'
                 {
-                  $3 = if_label;                        /* save if label to $3*/
+                  $3 = if_label;                        /* save if_label to $3*/
                   if_label = next_label++;              /* allocate a new label for the if block */
                   sprintf (genstr, "Z%1d:", if_label);  /* test the TOS, if TOS == 0, jump to the
-				                                           end of the if block. */
+				                                                   else block or the end of the if block,
+                                                           depends on whether the else block exists. */
                   generate (genstr);
                 }
               opt_newline statement  opt_else
                 {
                   sprintf (genstr, "N%1d:", if_label);  /* create the label point to the end of
-				                                         if block. */
+				                                                   if block. */
                   generate (genstr);
-                  if_label = $3;                        /* restore if label */
+                  if_label = $3;                        /* restore if_label */
                 }
             | While
                 {
                   $1 = next_label++;
-                  sprintf (genstr, "N%1d:", $1);
+                  sprintf (genstr, "N%1d:", $1);        /* create a new label for the while block. */
                   generate (genstr);
                 }
             '(' expression
                 {
-                  $4 = break_label;
-                  break_label = next_label++;
-                  sprintf (genstr, "Z%1d:", break_label);
+                  $4 = break_label;                        /* save the old break label, which will be restored
+                                                              after the while block. */
+                  break_label = next_label++;              /* allocate a new break label. */
+                  sprintf (genstr, "Z%1d:", break_label);  /* check TOS, jump to the the end of the while block
+                                                              if TOS == 0 */
                   generate (genstr);
                 }
             ')' opt_newline statement
                 {
-                  sprintf (genstr, "J%1d:N%1d:", $1, break_label);
+                  sprintf (genstr, "J%1d:N%1d:", $1, break_label); /* JUMP to the beginning of the while block,
+                                                                      also create a new label for the end of 
+                                                                      while block. */
                   generate (genstr);
                   break_label = $4;
                 }
@@ -302,16 +308,22 @@ print_element        : STRING
                   free ($1);
                 }
             | expression
-                { generate ("P"); }
+                { generate ("P"); }        /* Write the value on the top of the stack. pop TOS. */
              ;
 opt_else        : /* nothing */
             | Else
                 {
                   warn ("else clause in if statement");
                   $1 = next_label++;
-                  sprintf (genstr, "J%d:N%1d:", $1, if_label);
+                  sprintf (genstr, "J%d:N%1d:", $1, if_label); /* first, if TOS == 0, in the if block,
+                                                      the Z instruction will jump to the if_label here,
+                                                      where is the beginning of the else block. 
+                                                      if TOS != 0, the if block will be executed, then
+                                                      reach the J:$1 instruction, which whill jump to
+                                                      the end of the if-else block. */
                   generate (genstr);
-                  if_label = $1;
+                  if_label = $1;                      /* allocate a new if_label for the end of the 
+                                                       if block. */
                 }
               opt_newline statement
 function         : Define NAME '(' opt_parameter_list ')' opt_newline
