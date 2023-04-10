@@ -451,8 +451,7 @@ expression : named_expression ASSIGN_OP
                                                       VM will use a *STORE* a with the result */
                 {
                   if ($4 & 2) warn("comparison in assignment");
-                  if ($2 != '=')
-                  {
+                  if ($2 != '=') {
                     sprintf (genstr, "%c", $2);      /* $2 is +=/-=/*=, ... etc. */
                     generate (genstr);
                   }
@@ -492,13 +491,14 @@ expression : named_expression ASSIGN_OP
                   generate (genstr);
                 }
               expression
-                 {
+                {
                   int tmplab;
                   tmplab = next_label++;
-                  sprintf (genstr, "B%d:0J%d:N%d:1N%d:",   /* if TOS != 0, jump to $2 and push 1 onto the stack,
-                                                            otherwise push 0 onto the stack, jump to the end of 
-                                                            the statement block. */
-                       $2, tmplab, $2, tmplab);
+                  sprintf (genstr, "B%d:0J%d:N%d:1N%d:", $2, tmplab, $2, tmplab);
+                  /* if TOS != 0, jump to $2 and push 1 onto the stack,
+                   otherwise push 0 onto the stack, jump to the end of
+                   the statement block. */
+  
                   generate (genstr);
                   $$ = ($1 | $4) & ~4;
                 }
