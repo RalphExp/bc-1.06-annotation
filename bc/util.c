@@ -50,9 +50,7 @@ char *strcopyof(str) char *str;
 
 /* nextarg adds another value to the list of arguments. */
 
-arg_list *nextarg(args, val, is_var) arg_list *args;
-int val;
-int is_var;
+arg_list *nextarg(arg_list *args, int val, int is_var)
 {
   arg_list *temp;
 

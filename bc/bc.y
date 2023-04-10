@@ -85,7 +85,7 @@
 
 /* Types of all other things. */
 %type <i_value> expression return_expression named_expression opt_expression
-%type <c_value> '+' '-' '*' '/' '%' 
+%type <c_value> '+' '-' '*' '/' '%'
 %type <a_value> opt_parameter_list opt_auto_define_list define_list
 %type <a_value> opt_argument_list argument_list
 %type <i_value> program input_item semicolon_list statement_list
@@ -221,6 +221,7 @@ statement         : Warranty
                                                 otherwise jump to break_label, remove TOS. */
                   generate (genstr);
                   $<i_value>$ = continue_label; /* $<i_value>$ is the current block,
+                                                  like $$, and use i_value at its type,
                                                   save the continue_label to $<i_value>$,
                                                   because for block introduce a block scope,
                                                   continue label will be restored after
@@ -299,10 +300,10 @@ statement         : Warranty
                 {  warn ("print statement"); }
               print_list
             ;
-print_list        : print_element
+print_list : print_element
              | print_element ',' print_list
             ;
-print_element        : STRING
+print_element : STRING
                 {
                   generate ("O");
                   generate ($1);
@@ -328,7 +329,7 @@ opt_else        : /* nothing */
                 }
               opt_newline statement
 
-function         : Define NAME '(' opt_parameter_list ')' opt_newline
+function : Define NAME '(' opt_parameter_list ')' opt_newline
                    '{' required_eol opt_auto_define_list
                 {
                   /* Check auto list against parameter list? */
@@ -353,18 +354,18 @@ function         : Define NAME '(' opt_parameter_list ')' opt_newline
                   next_label = $1;                    /* restore next_label. */
                 }
             ;
-opt_parameter_list    : /* empty */ 
+opt_parameter_list : /* empty */
                 { $$ = NULL; }
             | define_list
             ;
-opt_auto_define_list     : /* empty */ 
+opt_auto_define_list : /* empty */
                 { $$ = NULL; }
             | Auto define_list ENDOFLINE
                 { $$ = $2; } 
             | Auto define_list ';'
                 { $$ = $2; } 
             ;
-define_list         : NAME
+define_list : NAME
                 { $$ = nextarg (NULL, lookup ($1,SIMPLE), FALSE);}
             | NAME '[' ']'
                 { $$ = nextarg (NULL, lookup ($1,ARRAY), FALSE); }
@@ -377,11 +378,11 @@ define_list         : NAME
             | define_list ',' '*' NAME '[' ']'
                 { $$ = nextarg ($1, lookup ($4,ARRAY), TRUE); }
             ;
-opt_argument_list    : /* empty */
+opt_argument_list : /* empty */
                 { $$ = NULL; }
             | argument_list
             ;
-argument_list         : expression
+argument_list : expression
                 {
                   if ($1 & 2) warn ("comparison in argument");
                   $$ = nextarg (NULL,0,FALSE);
@@ -433,29 +434,32 @@ return_expression    : /* empty */
                     warn ("return expression requires parenthesis");
                 }
             ;
-expression        :  named_expression ASSIGN_OP 
-                {
-                  if ($2 != '=')
-                {
+expression : named_expression ASSIGN_OP
+              {
+                if ($2 != '=') {
                   if ($1 < 0)
-                    sprintf (genstr, "DL%d:", -$1);
+                    sprintf (genstr, "DL%d:", -$1);  /* D: duplicate the TOS,
+                                                        L: load array, TODO: why use D?  */
                   else
-                    sprintf (genstr, "l%d:", $1);
+                    sprintf (genstr, "l%d:", $1);    /* l: load variable */
                   generate (genstr);
                 }
-                }
-              expression
+              }
+              expression                             /* e.g. a += b, the VM will *LOAD* a to TOS,
+                                                      load b to TOS, execute the ASSIGN_OP,
+                                                      which will load the result to TOS, then
+                                                      VM will use a *STORE* a with the result */
                 {
                   if ($4 & 2) warn("comparison in assignment");
                   if ($2 != '=')
-                {
-                  sprintf (genstr, "%c", $2);
-                  generate (genstr);
-                }
+                  {
+                    sprintf (genstr, "%c", $2);      /* $2 is +=/-=/*=, ... etc. */
+                    generate (genstr);
+                  }
                   if ($1 < 0)
-                sprintf (genstr, "S%d:", -$1);
+                    sprintf (genstr, "S%d:", -$1);   /* S: store array variable */
                   else
-                sprintf (genstr, "s%d:", $1);
+                    sprintf (genstr, "s%d:", $1);    /* s: store variable */
                   generate (genstr);
                   $$ = 0;
                 }
@@ -464,19 +468,26 @@ expression        :  named_expression ASSIGN_OP
                 {
                   warn("&& operator");
                   $2 = next_label++;
-                  sprintf (genstr, "DZ%d:p", $2);
+                  sprintf (genstr, "DZ%d:p", $2);    /* D: duplicate the TOS (why D? because if expression is
+                                                        0, it will remain in the TOS, we don't need to push 0)
+                                                        Z: jump to $2 (end of A && B) if TOS is 0
+                                                        note that the TOS will be removed. 
+                                                        if TOS != 0, pop TOS (which is set by D)*/
                   generate (genstr);
                 }
               expression
                 {
-                  sprintf (genstr, "DZ%d:p1N%d:", $2, $2);
+                  sprintf (genstr, "DZ%d:p1N%d:", $2, $2);  /* duplicate the TOS, then jump to $2 
+                                                      if TOS is 0, otherwise pop the TOS (which is set by D)
+                                                      and push 1 onto the stack, finally generate the 
+                                                      label after the second expression. */
                   generate (genstr);
                   $$ = ($1 | $4) & ~4;
                 }
             | expression OR
                 {
                   warn("|| operator");
-                  $2 = next_label++;
+                  $2 = next_label++;                        /* jump to $2 if TOS != 0 */
                   sprintf (genstr, "B%d:", $2);
                   generate (genstr);
                 }
@@ -484,7 +495,9 @@ expression        :  named_expression ASSIGN_OP
                  {
                   int tmplab;
                   tmplab = next_label++;
-                  sprintf (genstr, "B%d:0J%d:N%d:1N%d:",
+                  sprintf (genstr, "B%d:0J%d:N%d:1N%d:",   /* if TOS != 0, jump to $2 and push 1 onto the stack,
+                                                            otherwise push 0 onto the stack, jump to the end of 
+                                                            the statement block. */
                        $2, tmplab, $2, tmplab);
                   generate (genstr);
                   $$ = ($1 | $4) & ~4;
@@ -493,35 +506,35 @@ expression        :  named_expression ASSIGN_OP
                 {
                   $$ = $2 & ~4;
                   warn("! operator");
-                  generate ("!");
+                  generate ("!");                          /* negate TOS */
                 }
             | expression REL_OP expression
                 {
                   $$ = 3;
                   switch (*($2))
-                {
-                case '=':
-                  generate ("=");
-                  break;
+                  {
+                  case '=':
+                    generate ("=");
+                    break;
 
-                case '!':
-                  generate ("#");
-                  break;
+                  case '!':                                /* != */
+                    generate ("#");
+                    break;
 
-                case '<':
-                  if ($2[1] == '=')
-                    generate ("{");
-                  else
-                    generate ("<");
-                  break;
+                  case '<':
+                    if ($2[1] == '=')
+                      generate ("{");                      /* <= */
+                    else
+                      generate ("<");
+                    break;
 
-                case '>':
-                  if ($2[1] == '=')
-                    generate ("}");
-                  else
-                    generate (">");
-                  break;
-                }
+                  case '>':
+                    if ($2[1] == '=')
+                      generate ("}");
+                    else
+                      generate (">");
+                    break;
+                  }
                 }
             | expression '+' expression
                 {
@@ -562,9 +575,9 @@ expression        :  named_expression ASSIGN_OP
                 {
                   $$ = 1;
                   if ($1 < 0)
-                sprintf (genstr, "L%d:", -$1);
+                    sprintf (genstr, "L%d:", -$1);
                   else
-                sprintf (genstr, "l%d:", $1);
+                    sprintf (genstr, "l%d:", $1);
                   generate (genstr);
                 }
             | NUMBER
@@ -572,15 +585,14 @@ expression        :  named_expression ASSIGN_OP
                   int len = strlen($1);
                   $$ = 1;
                   if (len == 1 && *$1 == '0')
-                generate ("0");
+                    generate ("0");
                   else if (len == 1 && *$1 == '1')
-                generate ("1");
-                  else
-                {
-                  generate ("K");
-                  generate ($1);
-                  generate (":");
-                }
+                    generate ("1");
+                  else {
+                    generate ("K");
+                    generate ($1);
+                    generate (":");
+                  }
                   free ($1);
                 }
             | '(' expression ')'
@@ -588,59 +600,48 @@ expression        :  named_expression ASSIGN_OP
             | NAME '(' opt_argument_list ')'
                 {
                   $$ = 1;
-                  if ($3 != NULL)
-                { 
-                  sprintf (genstr, "C%d,%s:",
-                       lookup ($1,FUNCT),
-                       call_str ($3));
-                  free_args ($3);
-                }
-                  else
-                {
-                  sprintf (genstr, "C%d:", lookup ($1,FUNCT));
-                }
+                  if ($3 != NULL) { 
+                    sprintf (genstr, "C%d,%s:", lookup ($1,FUNCT), call_str ($3));
+                    free_args ($3);
+                  } else {
+                    sprintf (genstr, "C%d:", lookup ($1,FUNCT));
+                  }
                   generate (genstr);
                 }
             | INCR_DECR named_expression
                 {
                   $$ = 1;
-                  if ($2 < 0)
-                {
-                  if ($1 == '+')
-                    sprintf (genstr, "DA%d:L%d:", -$2, -$2);
-                  else
-                    sprintf (genstr, "DM%d:L%d:", -$2, -$2);
-                }
-                  else
-                {
-                  if ($1 == '+')
-                    sprintf (genstr, "i%d:l%d:", $2, $2);
-                  else
-                    sprintf (genstr, "d%d:l%d:", $2, $2);
-                }
+                  if ($2 < 0) {
+                    if ($1 == '+')
+                      sprintf (genstr, "DA%d:L%d:", -$2, -$2);
+                    else
+                      sprintf (genstr, "DM%d:L%d:", -$2, -$2);
+                  } else {
+                    if ($1 == '+')
+                      sprintf (genstr, "i%d:l%d:", $2, $2);
+                    else
+                      sprintf (genstr, "d%d:l%d:", $2, $2);
+                  }
                   generate (genstr);
                 }
             | named_expression INCR_DECR
                 {
                   $$ = 1;
-                  if ($1 < 0)
-                {
-                  sprintf (genstr, "DL%d:x", -$1);
-                  generate (genstr); 
-                  if ($2 == '+')
-                    sprintf (genstr, "A%d:", -$1);
-                  else
+                  if ($1 < 0) {
+                    sprintf (genstr, "DL%d:x", -$1);
+                    generate (genstr); 
+                    if ($2 == '+')
+                      sprintf (genstr, "A%d:", -$1);
+                    else
                       sprintf (genstr, "M%d:", -$1);
-                }
-                  else
-                {
-                  sprintf (genstr, "l%d:", $1);
-                  generate (genstr);
-                  if ($2 == '+')
-                    sprintf (genstr, "i%d:", $1);
-                  else
-                    sprintf (genstr, "d%d:", $1);
-                }
+                  } else {
+                    sprintf (genstr, "l%d:", $1);
+                    generate (genstr);
+                    if ($2 == '+')
+                      sprintf (genstr, "i%d:", $1);
+                    else
+                      sprintf (genstr, "d%d:", $1);
+                  }
                   generate (genstr);
                 }
             | Length '(' expression ')'
